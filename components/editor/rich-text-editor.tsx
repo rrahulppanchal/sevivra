@@ -4,7 +4,8 @@ import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
-import { useCallback } from "react"
+import { TextStyle } from "@tiptap/extension-text-style"
+import { useImperativeHandle, forwardRef } from "react"
 
 interface RichTextEditorProps {
   content: string
@@ -12,159 +13,197 @@ interface RichTextEditorProps {
   readOnly?: boolean
 }
 
-export function RichTextEditor({ content, onChange, readOnly = false }: RichTextEditorProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3, 4],
+export interface RichTextEditorRef {
+  toggleBold: () => void
+  toggleItalic: () => void
+  setLink: () => void
+  setHeading: (level: 1 | 2 | 3 | 4 | null) => void
+  getCurrentHeading: () => 1 | 2 | 3 | 4 | null
+  increaseFontSize: () => void
+  decreaseFontSize: () => void
+  toggleUppercase: () => void
+  toggleLowercase: () => void
+  isBold: () => boolean
+  isItalic: () => boolean
+}
+
+// Custom extension for font size using inline styles
+const FontSize = TextStyle.extend({
+  name: "fontSize",
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      fontSize: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.style.fontSize || null,
+        renderHTML: (attributes: { fontSize?: string | null }) => {
+          if (!attributes.fontSize) {
+            return {}
+          }
+          return {
+            style: `font-size: ${attributes.fontSize}`,
+          }
         },
-      }),
-      Underline,
-      Link.configure({
-        openOnClick: false,
-      }),
-    ],
-    content,
-    editable: !readOnly,
-    immediatelyRender: false,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
-    },
-  })
-
-  const toggleBold = useCallback(() => {
-    editor?.chain().focus().toggleBold().run()
-  }, [editor])
-
-  const toggleItalic = useCallback(() => {
-    editor?.chain().focus().toggleItalic().run()
-  }, [editor])
-
-  const toggleUnderline = useCallback(() => {
-    editor?.chain().focus().toggleUnderline().run()
-  }, [editor])
-
-  const setLink = useCallback(() => {
-    const url = window.prompt("Enter URL:")
-    if (url) {
-      editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+      },
     }
-  }, [editor])
+  },
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      setFontSize: (fontSize: string) => ({ chain }: { chain: any }) => {
+        return chain().setMark("fontSize", { fontSize }).run()
+      },
+      unsetFontSize: () => ({ chain }: { chain: any }) => {
+        return chain().setMark("fontSize", { fontSize: null }).removeEmptyTextStyle().run()
+      },
+    }
+  },
+})
 
-  if (!editor) {
-    return null
-  }
+// Custom extension for text transform
+const TextTransform = TextStyle.extend({
+  name: "textTransform",
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      textTransform: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.style.textTransform || null,
+        renderHTML: (attributes: { textTransform?: string | null }) => {
+          if (!attributes.textTransform) {
+            return {}
+          }
+          return {
+            style: `text-transform: ${attributes.textTransform}`,
+          }
+        },
+      },
+    }
+  },
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      setTextTransform: (transform: "uppercase" | "lowercase" | "none") => ({ chain }: { chain: any }) => {
+        return chain().setMark("textTransform", { textTransform: transform }).run()
+      },
+      unsetTextTransform: () => ({ chain }: { chain: any }) => {
+        return chain().setMark("textTransform", { textTransform: null }).removeEmptyTextStyle().run()
+      },
+    }
+  },
+})
 
-  return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-background">
-      {/* Formatting Toolbar - Made sticky and responsive */}
-      <div className="border-b border-border bg-white px-4 sm:px-6 py-3 flex items-center justify-start gap-1 sm:gap-2 flex-wrap sticky top-0 z-10 overflow-x-auto">
-        <button
-          onClick={toggleBold}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground font-semibold text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("bold") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Bold (Ctrl+B)"
-        >
-          B
-        </button>
-        <button
-          onClick={toggleItalic}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground italic text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("italic") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Italic (Ctrl+I)"
-        >
-          I
-        </button>
-        <button
-          onClick={toggleUnderline}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 underline whitespace-nowrap ${
-            editor.isActive("underline") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Underline (Ctrl+U)"
-        >
-          U
-        </button>
-        <button
-          onClick={setLink}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("link") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Add Link"
-        >
-          🔗
-        </button>
+export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
+  ({ content, onChange, readOnly = false }, ref) => {
+    const editor = useEditor({
+      extensions: [
+        StarterKit.configure({
+          heading: {
+            levels: [1, 2, 3, 4],
+          },
+        }),
+        Underline,
+        Link.configure({
+          openOnClick: false,
+        }),
+        FontSize,
+        TextTransform,
+      ],
+      content,
+      editable: !readOnly,
+      immediatelyRender: false,
+      onUpdate: ({ editor }) => {
+        onChange(editor.getHTML())
+      },
+    })
 
-        <div className="h-6 w-px bg-border mx-1 sm:mx-2" />
+    useImperativeHandle(ref, () => ({
+      toggleBold: () => {
+        editor?.chain().focus().toggleBold().run()
+      },
+      toggleItalic: () => {
+        editor?.chain().focus().toggleItalic().run()
+      },
+      setLink: () => {
+        const url = window.prompt("Enter URL:")
+        if (url) {
+          editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+        }
+      },
+      setHeading: (level: 1 | 2 | 3 | 4 | null) => {
+        if (!editor) return
+        if (level === null) {
+          editor.chain().focus().setParagraph().run()
+        } else {
+          editor.chain().focus().toggleHeading({ level }).run()
+        }
+      },
+      getCurrentHeading: () => {
+        if (!editor) return null
+        if (editor.isActive("heading", { level: 1 })) return 1
+        if (editor.isActive("heading", { level: 2 })) return 2
+        if (editor.isActive("heading", { level: 3 })) return 3
+        if (editor.isActive("heading", { level: 4 })) return 4
+        return null
+      },
+      increaseFontSize: () => {
+        if (!editor) return
+        const currentSize = editor.getAttributes("fontSize")?.fontSize
+        const sizes = ["12px", "14px", "16px", "18px", "20px", "24px", "28px", "32px", "36px", "48px"]
+        const currentIndex = currentSize ? sizes.indexOf(currentSize) : 2 // Default to 16px
+        const nextIndex = Math.min(currentIndex + 1, sizes.length - 1)
+        ;(editor.chain().focus() as any).setFontSize(sizes[nextIndex]).run()
+      },
+      decreaseFontSize: () => {
+        if (!editor) return
+        const currentSize = editor.getAttributes("fontSize")?.fontSize
+        const sizes = ["12px", "14px", "16px", "18px", "20px", "24px", "28px", "32px", "36px", "48px"]
+        const currentIndex = currentSize ? sizes.indexOf(currentSize) : 2 // Default to 16px
+        const nextIndex = Math.max(currentIndex - 1, 0)
+        ;(editor.chain().focus() as any).setFontSize(sizes[nextIndex]).run()
+      },
+      toggleUppercase: () => {
+        if (!editor) return
+        const currentTransform = editor.getAttributes("textTransform")?.textTransform
+        if (currentTransform === "uppercase") {
+          ;(editor.chain().focus() as any).setTextTransform("none").run()
+        } else {
+          ;(editor.chain().focus() as any).setTextTransform("uppercase").run()
+        }
+      },
+      toggleLowercase: () => {
+        if (!editor) return
+        const currentTransform = editor.getAttributes("textTransform")?.textTransform
+        if (currentTransform === "lowercase") {
+          ;(editor.chain().focus() as any).setTextTransform("none").run()
+        } else {
+          ;(editor.chain().focus() as any).setTextTransform("lowercase").run()
+        }
+      },
+      isBold: () => {
+        return editor?.isActive("bold") ?? false
+      },
+      isItalic: () => {
+        return editor?.isActive("italic") ?? false
+      },
+    }))
 
-        <button
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("heading", { level: 1 }) ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Heading 1"
-        >
-          H1
-        </button>
-        <button
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("heading", { level: 2 }) ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Heading 2"
-        >
-          H2
-        </button>
-        <button
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("bulletList") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Bullet List"
-        >
-          • List
-        </button>
-        <button
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          className={`px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap ${
-            editor.isActive("orderedList") ? "bg-primary/10 text-primary" : ""
-          }`}
-          title="Numbered List"
-        >
-          1. List
-        </button>
+    if (!editor) {
+      return null
+    }
 
-        <div className="h-6 w-px bg-border mx-1 sm:mx-2" />
-
-        <button
-          onClick={() => editor.chain().focus().undo().run()}
-          className="px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap"
-          title="Undo"
-        >
-          ↶
-        </button>
-        <button
-          onClick={() => editor.chain().focus().redo().run()}
-          className="px-2 py-1 rounded hover:bg-secondary text-foreground text-sm transition-all duration-150 whitespace-nowrap"
-          title="Redo"
-        >
-          ↷
-        </button>
-      </div>
-
-      {/* Editor Content - Improved responsive padding and scrolling */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
+    return (
+      <div className="w-full">
         <EditorContent
           editor={editor}
-          className="prose prose-sm max-w-none"
+          className="prose prose-lg max-w-none font-serif [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[800px] [&_.ProseMirror_h1]:text-4xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h1]:mt-6 [&_.ProseMirror_h1]:mb-4 [&_.ProseMirror_h2]:text-3xl [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h2]:mt-5 [&_.ProseMirror_h2]:mb-3 [&_.ProseMirror_h3]:text-2xl [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_h3]:mt-4 [&_.ProseMirror_h3]:mb-2 [&_.ProseMirror_h4]:text-xl [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h4]:mt-3 [&_.ProseMirror_h4]:mb-2 [&_.ProseMirror_p]:mb-4 [&_.ProseMirror_p]:leading-relaxed"
           style={{
-            maxWidth: "56rem",
-            margin: "0 auto",
+            color: "#1F2937",
           }}
         />
       </div>
-    </div>
-  )
-}
+    )
+  }
+)
+
+RichTextEditor.displayName = "RichTextEditor"
