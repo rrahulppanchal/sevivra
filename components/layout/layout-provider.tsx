@@ -27,7 +27,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
   return (
     <LayoutContext.Provider value={{ sidebarOpen, setSidebarOpen }}>
       <div className="flex h-screen flex-col bg-background">
-        <Header />
+        {/* <Header /> */}
         <div className="flex flex-1 overflow-hidden">
           {/* <Sidebar /> */}
           <main className="flex-1 overflow-y-auto">{children}</main>

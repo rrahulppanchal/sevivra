@@ -1,10 +1,21 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Plus, Menu, X, Users, Bold, Italic, Link as LinkIcon, Type, ArrowUp, MessageCircle } from "lucide-react"
+import { Send, Plus, Menu, X, Users, Bold, Italic, Link as LinkIcon, Type, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Header } from "@/components/layout/header"
 
 interface ChatMessage {
   id: string
@@ -61,6 +72,22 @@ export default function ChatPage() {
   const [currentHeading, setCurrentHeading] = useState<1 | 2 | 3 | 4 | null>(null)
   const [isBoldActive, setIsBoldActive] = useState(false)
   const [isItalicActive, setIsItalicActive] = useState(false)
+  const [selectedModel, setSelectedModel] = useState("gpt-4-research")
+  const [isOutlineExpanded, setIsOutlineExpanded] = useState(true)
+  const [isCommentsExpanded, setIsCommentsExpanded] = useState(true)
+
+  const aiModels = [
+    { id: "gpt-4-research", name: "GPT-4 (Research)", description: "Optimized for academic research" },
+    { id: "gpt-4", name: "GPT-4", description: "General purpose" },
+    { id: "gpt-4-turbo", name: "GPT-4 Turbo", description: "Faster responses" },
+    { id: "claude-3-opus", name: "Claude 3 Opus", description: "Advanced reasoning" },
+    { id: "claude-3-sonnet", name: "Claude 3 Sonnet", description: "Balanced performance" },
+  ]
+
+  const getModelName = (modelId: string) => {
+    return aiModels.find((m) => m.id === modelId)?.name || "GPT-4 (Research)"
+  }
+
   const [documentContent, setDocumentContent] = useState(
     `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
     <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Ava Chen</strong> • Rahul Gupta</p>
@@ -178,8 +205,8 @@ export default function ChatPage() {
     setCommentInput("")
   }
 
-  return (
-    <div className="flex h-screen bg-[#F5F1E6] overflow-hidden">
+  return (<><Header />
+    <div className="flex h-full bg-[#F5F1E6] overflow-hidden">
       {/* Mobile Overlay */}
       {(leftSidebarOpen || rightSidebarOpen) && (
         <div
@@ -269,11 +296,27 @@ export default function ChatPage() {
             </button>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium text-[#6B7280] bg-white">
-              <span className="text-[#F26419]">🤖</span>
-              <span>GPT-4 (Research)</span>
-              <span className="text-xs">▼</span>
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium text-[#6B7280] bg-white">
+                  <span className="text-[#F26419]">🤖</span>
+                  <span>{getModelName(selectedModel)}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>AI Model</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup value={selectedModel} onValueChange={setSelectedModel}>
+                  {aiModels.map((model) => (
+                    <DropdownMenuRadioItem key={model.id} value={model.id} className="flex flex-col items-start gap-0.5 py-2">
+                      <span className="font-medium text-sm">{model.name}</span>
+                      <span className="text-xs text-[#6B7280]">{model.description}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </aside>
@@ -431,80 +474,106 @@ export default function ChatPage() {
         </div>
 
         {/* Outline Section */}
-        <div className="p-4 border-b border-[#E5E0D4] flex-1 overflow-y-auto">
-          <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Outline</h3>
-          <nav className="space-y-1">
-            <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#1F2937] bg-[#1DA619]/10 border-l-4 border-[#1DA619]">
-              Abstract
-            </a>
-            <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-              1. Introduction
-            </a>
-            <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-              2. Theoretical Model
-            </a>
-            <div className="pl-4 space-y-1">
-              <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                2.1 Microtubule Dynamics
+        <div className={cn("p-4 border-b border-[#E5E0D4] flex flex-col transition-all duration-300", isOutlineExpanded ? "flex-1 min-h-0" : "")}>
+          <button
+            onClick={() => setIsOutlineExpanded(!isOutlineExpanded)}
+            className="flex items-center justify-between w-full mb-3 hover:opacity-80 transition-opacity"
+          >
+            <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Outline</h3>
+            {isOutlineExpanded ? (
+              <ChevronUp className="h-4 w-4 text-[#6B7280]" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+            )}
+          </button>
+          {isOutlineExpanded && (
+            <nav className="flex-1 overflow-y-auto space-y-1">
+              <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#1F2937] bg-[#1DA619]/10 border-l-4 border-[#1DA619]">
+                Abstract
               </a>
-              <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                2.2 Entanglement Entropy
+              <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                1. Introduction
               </a>
-            </div>
-            <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-              3. Results
-            </a>
-            <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-              4. Discussion
-            </a>
-          </nav>
+              <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                2. Theoretical Model
+              </a>
+              <div className="pl-4 space-y-1">
+                <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                  2.1 Microtubule Dynamics
+                </a>
+                <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                  2.2 Entanglement Entropy
+                </a>
+              </div>
+              <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                3. Results
+              </a>
+              <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
+                4. Discussion
+              </a>
+            </nav>
+          )}
         </div>
 
         {/* Comments Section */}
-        <div className="h-1/3 p-4 flex flex-col border-t border-[#E5E0D4] bg-gray-50/50">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Comments</h3>
-            <span className="text-xs bg-[#F26419]/10 text-[#F26419] px-2 py-0.5 rounded-full font-bold">
-              {comments.length}
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-            {comments.map((comment) => (
-              <div
-                key={comment.id}
-                className={cn(
-                  "bg-white p-3 rounded-lg border border-gray-100 shadow-sm",
-                  comment.isHighlighted && "border-l-4 border-l-[#F26419]"
-                )}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-bold text-[#1F2937]">{comment.author}</span>
-                  <span className="text-[10px] text-[#6B7280]">{comment.time}</span>
-                </div>
-                <p className="text-xs text-[#1F2937] leading-relaxed">{comment.content}</p>
+        <div className={cn("p-4 flex flex-col border-t border-[#E5E0D4] bg-gray-50/50 transition-all duration-300", isCommentsExpanded ? "flex-1 min-h-0" : "")}>
+          <button
+            onClick={() => setIsCommentsExpanded(!isCommentsExpanded)}
+            className="flex items-center justify-between w-full mb-3 hover:opacity-80 transition-opacity"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Comments</h3>
+              <span className="text-xs bg-[#F26419]/10 text-[#F26419] px-2 py-0.5 rounded-full font-bold">
+                {comments.length}
+              </span>
+            </div>
+            {isCommentsExpanded ? (
+              <ChevronUp className="h-4 w-4 text-[#6B7280]" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+            )}
+          </button>
+          {isCommentsExpanded && (
+            <>
+              <div className="flex-1 overflow-y-auto pr-2 space-y-3 mb-3">
+                {comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className={cn(
+                      "bg-white p-3 rounded-lg border border-gray-100 shadow-sm",
+                      comment.isHighlighted && "border-l-4 border-l-[#F26419]"
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-[#1F2937]">{comment.author}</span>
+                      <span className="text-[10px] text-[#6B7280]">{comment.time}</span>
+                    </div>
+                    <p className="text-xs text-[#1F2937] leading-relaxed">{comment.content}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="mt-3 relative">
-            <input
-              type="text"
-              value={commentInput}
-              onChange={(e) => setCommentInput(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  handleAddComment()
-                }
-              }}
-              className="w-full text-xs bg-white border border-gray-200 rounded-lg pl-3 pr-8 py-2 focus:ring-1 focus:ring-[#1DA619] focus:border-[#1DA619] outline-none text-[#1F2937]"
-              placeholder="Add a comment..."
-            />
-            <button
-              onClick={handleAddComment}
-              className="absolute right-2 top-1.5 text-[#6B7280] hover:text-[#1DA619] transition-colors"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleAddComment()
+                    }
+                  }}
+                  className="w-full text-xs bg-white border border-gray-200 rounded-lg pl-3 pr-8 py-2 focus:ring-1 focus:ring-[#1DA619] focus:border-[#1DA619] outline-none text-[#1F2937]"
+                  placeholder="Add a comment..."
+                />
+                <button
+                  onClick={handleAddComment}
+                  className="absolute right-2 top-1.5 text-[#6B7280] hover:text-[#1DA619] transition-colors"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </aside>
 
@@ -517,6 +586,6 @@ export default function ChatPage() {
           <MessageCircle className="h-6 w-6" />
         </button>
       </div>
-    </div>
+    </div></>
   )
 }
