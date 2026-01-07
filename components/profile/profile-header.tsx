@@ -1,9 +1,9 @@
 "use client"
 
-import { CheckCircle2, FileText, Plus } from "lucide-react"
+import { CheckCircle2, Building2, Plus, Edit, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 
 export function ProfileHeader() {
   const [keywords, setKeywords] = useState(["AGI", "Neural Networks", "Machine Learning", "Quantum Biology"])
@@ -15,49 +15,70 @@ export function ProfileHeader() {
     }
   }
 
+  const removeKeyword = (keyword: string) => {
+    setKeywords(keywords.filter((k) => k !== keyword))
+  }
+
   return (
-    <div className="space-y-5 md:space-y-6">
+    <div className="space-y-4">
       {/* Name and Verification */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent flex items-center gap-2">
+      <div className="flex items-center gap-3 group relative w-fit">
+        <h1 className="text-4xl md:text-5xl font-serif font-bold bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent pr-2">
           Dr. Julian Smith
-          <CheckCircle2 className="h-6 w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-primary flex-shrink-0" />
         </h1>
+        <div title="Verified Researcher">
+          <CheckCircle2 className="h-8 w-8 text-[#1DA619] flex-shrink-0" />
+        </div>
+        <button
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] absolute -right-10 top-1/2 -translate-y-1/2"
+          title="Edit Name"
+        >
+          <Edit className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Academic Background */}
-      <p className="text-base md:text-lg text-muted-foreground">
-        BSc. Computer Science, PhD Machine Learning
-      </p>
+      <div className="flex items-center gap-2 group w-fit">
+        <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm md:text-base font-medium">
+          BSc. Computer Science, PhD Machine Learning
+        </p>
+        <button
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619]"
+          title="Edit Degrees"
+        >
+          <Edit className="h-4 w-4" />
+        </button>
+      </div>
 
       {/* Keywords/Tags */}
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-wrap gap-2 items-center group">
         {keywords.map((keyword) => (
-          <Badge
+          <span
             key={keyword}
-            variant="secondary"
-            className="px-3 py-1.5 text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+            className="px-3 py-1 rounded-full bg-white dark:bg-[#262626] border border-[#E5E0D4] dark:border-[#404040] text-xs font-semibold text-[#1F2937] dark:text-[#E5E7EB] shadow-sm flex items-center gap-1"
           >
             {keyword}
-          </Badge>
+            <button
+              onClick={() => removeKeyword(keyword)}
+              className="hover:text-red-500 hidden group-hover:block transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
         ))}
-        <Button
-          variant="outline"
-          size="sm"
+        <button
           onClick={addKeyword}
-          className="border-primary text-primary hover:bg-primary/10 h-8"
+          className="px-2 py-1 rounded-full border border-dashed border-[#1DA619]/50 text-[#1DA619] hover:bg-[#1DA619]/5 text-xs font-semibold flex items-center transition-colors"
         >
-          <Plus className="h-4 w-4 mr-1.5" />
+          <Plus className="h-4 w-4" />
           Add Keyword
-        </Button>
+        </button>
       </div>
 
       {/* Affiliation */}
-      <div className="flex items-center gap-2 text-sm md:text-base text-muted-foreground">
-        <FileText className="h-4 w-4 md:h-5 md:w-5 flex-shrink-0" />
-        <span>
-          <span className="font-semibold text-primary">Verified</span> - Stanford University
-        </span>
+      <div className="flex items-center gap-2 text-[#1F2937] dark:text-[#E5E7EB] font-medium text-sm pt-2 group w-fit">
+        <Building2 className="h-5 w-5 text-[#6B7280] dark:text-[#9CA3AF]" />
+        <span>Verified - Stanford University</span>
       </div>
     </div>
   )

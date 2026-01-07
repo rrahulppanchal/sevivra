@@ -53,10 +53,9 @@ const notifications = [
 ]
 
 const navigationItems = [
-  { label: "Home", href: "/", icon: Home },
-  { label: "Projects", href: "/", icon: Zap },
+  { label: "Projects", href: "/projects", icon: Zap },
   { label: "Chat", href: "/chat", icon: MessageCircle },
-  { label: "Documents", href: "/", icon: FileText },
+  // { label: "Documents", href: "/", icon: FileText },
 ]
 
 export function Header() {
@@ -64,7 +63,7 @@ export function Header() {
   const unreadCount = notifications.length
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-white shadow-sm">
+    <header className="sticky top-0 z-40 border-b border-border bg-white">
       <div className="flex h-16 items-center justify-between px-4 md:px-6">
         {/* Left side - Logo, Toggle, and Navigation */}
         <div className="flex items-center gap-2 md:gap-4">
@@ -135,9 +134,9 @@ export function Header() {
         {/* Right side - Search, Notifications, and Profile */}
         <div className="flex items-center gap-2 md:gap-4">
           {/* Search - Desktop only */}
-          <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-foreground hover:bg-secondary">
+          {/* <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-foreground hover:bg-secondary">
             <Search className="h-5 w-5" />
-          </Button>
+          </Button> */}
 
           {/* Notifications Dropdown */}
           <DropdownMenu>
@@ -216,7 +215,7 @@ export function Header() {
                 </Avatar>
                 <div className="hidden md:flex flex-col items-start">
                   <span className="text-sm font-medium text-foreground">John Smith</span>
-                  <span className="text-xs text-muted-foreground">Researcher</span>
+                  {/* <span className="text-xs text-muted-foreground">Researcher</span> */}
                 </div>
                 <ChevronDown className="h-4 w-4 text-muted-foreground hidden md:block" />
               </Button>

@@ -1,6 +1,6 @@
 "use client"
 
-import { FileText, ExternalLink } from "lucide-react"
+import { FileText, ExternalLink, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const publications = [
@@ -29,60 +29,57 @@ const publications = [
 
 export function PublicationsSection() {
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5 md:h-6 md:w-6 text-accent flex-shrink-0" />
-          <h2 className="text-xl md:text-2xl font-bold text-foreground">Selected Publications</h2>
-        </div>
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-serif text-xl font-bold text-[#1F2937] dark:text-[#E5E7EB] flex items-center gap-2">
+          <FileText className="h-5 w-5 text-[#F26419]" />
+          Selected Publications
+        </h2>
         <Button
           variant="outline"
-          size="sm"
-          className="border-border text-foreground hover:bg-secondary"
+          className="flex items-center gap-1 text-sm font-semibold text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] px-3 py-1.5 rounded-lg transition-colors border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626] h-auto"
           onClick={() => {
-            // Handle modify
             console.log("Modify publications clicked")
           }}
         >
+          <FileText className="h-5 w-5" />
           Modify
         </Button>
       </div>
-      <div className="bg-white rounded-xl border border-border divide-y divide-border">
-        {publications.map((publication, index) => (
+      <div className="bg-white dark:bg-[#262626] rounded-2xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] divide-y divide-[#E5E0D4] dark:divide-[#404040]">
+        {publications.map((publication) => (
           <div
             key={publication.id}
-            className="p-4 md:p-6 hover:bg-secondary/50 transition-colors cursor-pointer"
+            className="p-5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer group"
           >
-            <div className="space-y-2">
-              <h3 className="text-base md:text-lg font-semibold text-foreground">
+            <div className="flex justify-between items-start">
+              <h3 className="font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-1 group-hover:text-[#1DA619] transition-colors text-lg">
                 {publication.title}
               </h3>
-              <p className="text-sm md:text-base text-muted-foreground">{publication.authors}</p>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{publication.journal}</p>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-muted-foreground">
-                    Cited by <span className="font-semibold text-foreground">{publication.citations}</span>
-                  </span>
-                </div>
-              </div>
+              <ExternalLink className="h-5 w-5 text-[#6B7280] dark:text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">{publication.authors}</p>
+            <div className="flex items-center gap-3 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              <span className="font-serif italic text-[#1F2937] dark:text-[#E5E7EB]">{publication.journal}</span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <FileText className="h-3.5 w-3.5" />
+                Cited by {publication.citations}
+              </span>
             </div>
           </div>
         ))}
       </div>
-      <div className="text-right">
-        <Button
-          variant="link"
-          className="text-primary hover:text-primary/80 p-0"
-          onClick={() => {
-            // Handle view all
-            console.log("View all publications clicked")
-          }}
-        >
-          View all publications <ExternalLink className="h-4 w-4 ml-1 inline" />
-        </Button>
-      </div>
-    </section>
+      <button
+        className="mt-4 text-[#1DA619] text-sm font-semibold hover:text-green-700 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-[#1DA619]/5 w-fit"
+        onClick={() => {
+          console.log("View all publications clicked")
+        }}
+      >
+        View all publications
+        <ArrowRight className="h-5 w-5" />
+      </button>
+    </div>
   )
 }
 
