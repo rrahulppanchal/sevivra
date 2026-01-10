@@ -5,6 +5,7 @@ import type React from "react"
 import { createContext, useContext, useState } from "react"
 import { Header } from "./header"
 import { Sidebar } from "./sidebar"
+import { AuthProvider } from "@/hooks/use-auth"
 
 interface LayoutContextType {
   sidebarOpen: boolean
@@ -25,14 +26,16 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
-    <LayoutContext.Provider value={{ sidebarOpen, setSidebarOpen }}>
-      <div className="flex h-screen flex-col bg-background">
-        {/* <Header /> */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* <Sidebar /> */}
-          <main className="flex-1 overflow-y-auto">{children}</main>
+    <AuthProvider>
+      <LayoutContext.Provider value={{ sidebarOpen, setSidebarOpen }}>
+        <div className="flex h-screen flex-col bg-background">
+          {/* <Header /> */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* <Sidebar /> */}
+            <main className="flex-1 overflow-y-auto">{children}</main>
+          </div>
         </div>
-      </div>
-    </LayoutContext.Provider>
+      </LayoutContext.Provider>
+    </AuthProvider>
   )
 }

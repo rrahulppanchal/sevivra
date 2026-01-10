@@ -1,31 +1,69 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Eye, EyeOff, Mail, Lock, User, Building2, Sparkles } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Eye, EyeOff, Mail, Lock, User, Building2, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { toast } from "sonner"
 
 export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     institution: "",
     password: "",
     confirmPassword: "",
+    role: "author" as "author" | "reviewer" | "editor",
   })
+  const { register } = useAuth()
+  const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle sign up logic here
+    setError("")
+    setSuccess(false)
+
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match")
+      setError("Passwords do not match")
       return
     }
-    console.log("Sign up:", formData)
+
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters long")
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        institution: formData.institution || undefined,
+        role: formData.role,
+      })
+      setSuccess(true)
+      toast.success("Registration successful! Your account is pending approval.")
+      setTimeout(() => {
+        router.push("/auth/signin")
+      }, 3000)
+    } catch (err: any) {
+      setError(err.message || "Failed to register. Please try again.")
+      toast.error(err.message || "Registration failed")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +111,18 @@ export default function SignUpPage() {
           {/* Decorative gradient border effect */}
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-accent/5 via-transparent to-primary/5 opacity-50 pointer-events-none"></div>
           <div className="relative z-10">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <span>{error}</span>
+            </div>
+          )}
+          {success && (
+            <div className="mb-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Registration successful! Your account is pending approval. Redirecting to sign in...</span>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name Field */}
             <div className="space-y-2.5">
@@ -131,6 +181,31 @@ export default function SignUpPage() {
                   className="pl-11 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
                 />
               </div>
+            </div>
+
+            {/* Role Field */}
+            <div className="space-y-2.5">
+              <Label htmlFor="role" className="text-sm font-semibold text-foreground">
+                Role
+              </Label>
+              <Select
+                value={formData.role}
+                onValueChange={(value: "author" | "reviewer" | "editor") =>
+                  setFormData({ ...formData, role: value })
+                }
+              >
+                <SelectTrigger className="h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50">
+                  <SelectValue placeholder="Select your role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="author">Author</SelectItem>
+                  <SelectItem value="reviewer">Reviewer</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Your account will need approval from the administrator before you can log in.
+              </p>
             </div>
 
             {/* Password Field */}
@@ -225,12 +300,13 @@ export default function SignUpPage() {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300"
+              disabled={isLoading || success}
+              className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#F26419' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e55a0f'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#F26419'}
+              onMouseEnter={(e) => !isLoading && !success && (e.currentTarget.style.backgroundColor = '#e55a0f')}
+              onMouseLeave={(e) => !isLoading && !success && (e.currentTarget.style.backgroundColor = '#F26419')}
             >
-              Create account
+              {isLoading ? "Creating account..." : success ? "Account created!" : "Create account"}
             </Button>
           </form>
 

@@ -1,21 +1,41 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Eye, EyeOff, Mail, Lock, Sparkles } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, Sparkles, AlertCircle } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { toast } from "sonner"
 
-export default function SignInPage() {
+function SignInForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const { login } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirect = searchParams.get("redirect") || "/"
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle sign in logic here
-    console.log("Sign in:", { email, password })
+    setError("")
+    setIsLoading(true)
+
+    try {
+      await login(email, password)
+      toast.success("Login successful!")
+      router.push(redirect)
+    } catch (err: any) {
+      setError(err.message || "Failed to sign in. Please try again.")
+      toast.error(err.message || "Login failed")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -56,6 +76,12 @@ export default function SignInPage() {
           {/* Decorative gradient border effect */}
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-50 pointer-events-none"></div>
           <div className="relative z-10">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <span>{error}</span>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
             <div className="space-y-2.5">
@@ -130,12 +156,13 @@ export default function SignInPage() {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300"
+              disabled={isLoading}
+              className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#F26419' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e55a0f'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#F26419'}
+              onMouseEnter={(e) => !isLoading && (e.currentTarget.style.backgroundColor = '#e55a0f')}
+              onMouseLeave={(e) => !isLoading && (e.currentTarget.style.backgroundColor = '#F26419')}
             >
-              Sign in
+              {isLoading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
 
@@ -164,6 +191,20 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <SignInForm />
+    </Suspense>
   )
 }
 
