@@ -80,8 +80,8 @@ export function Header() {
             <div className="flex items-center gap-2">
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419"></path>
-                <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-                <path d="M9 3H15" stroke="#1DA619" stroke-linecap="round" stroke-width="2"></path>
+                <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
+                <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2"></path>
               </svg>
               <span className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Sevivra</span>
             </div>
