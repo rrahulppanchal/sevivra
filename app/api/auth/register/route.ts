@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/db'
 import User from '@/models/User'
-import { UserRole } from '@/models/User'
+import type { UserRole } from '@/models/User'
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB()
 
-    const { name, email, password, institution, role } = await request.json()
+    const { name, email, password, institution } = await request.json()
 
     // Validation
     if (!name || !email || !password) {
@@ -24,9 +24,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate role
-    const validRoles: UserRole[] = ['author', 'reviewer', 'editor']
-    const userRole: UserRole = validRoles.includes(role) ? role : 'author'
+    // Default role is 'user' for all new registrations
+    const userRole: UserRole = 'user'
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() })

@@ -3,38 +3,43 @@
 import { useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, Mail, Lock, Sparkles, AlertCircle } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
+import { signinFormSchema, type SigninFormInput } from "@/lib/validations/signin"
 
 function SignInForm() {
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
   const { login } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get("redirect") || "/"
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setIsLoading(true)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SigninFormInput>({
+    resolver: zodResolver(signinFormSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      remember: false,
+    },
+  })
 
+  const onSubmit = async (data: SigninFormInput) => {
     try {
-      await login(email, password)
+      await login(data.email, data.password)
       toast.success("Login successful!")
       router.push(redirect)
     } catch (err: any) {
-      setError(err.message || "Failed to sign in. Please try again.")
       toast.error(err.message || "Login failed")
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -76,13 +81,7 @@ function SignInForm() {
           {/* Decorative gradient border effect */}
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-50 pointer-events-none"></div>
           <div className="relative z-10">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {/* Email Field */}
             <div className="space-y-2.5">
               <Label htmlFor="email" className="text-sm font-semibold text-foreground">
@@ -94,12 +93,20 @@ function SignInForm() {
                   id="email"
                   type="email"
                   placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-11 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
+                  {...register("email")}
+                  className={`pl-11 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.email
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
               </div>
+              {errors.email && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.email.message}
+                </p>
+              )}
             </div>
 
             {/* Password Field */}
@@ -121,10 +128,12 @@ function SignInForm() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-11 pr-12 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
+                  {...register("password")}
+                  className={`pl-11 pr-12 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.password
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
                 <button
                   type="button"
@@ -139,6 +148,12 @@ function SignInForm() {
                   )}
                 </button>
               </div>
+              {errors.password && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.password.message}
+                </p>
+              )}
             </div>
 
             {/* Remember Me */}
@@ -146,6 +161,7 @@ function SignInForm() {
               <input
                 type="checkbox"
                 id="remember"
+                {...register("remember")}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-0"
               />
               <Label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer">
@@ -156,13 +172,13 @@ function SignInForm() {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#F26419' }}
-              onMouseEnter={(e) => !isLoading && (e.currentTarget.style.backgroundColor = '#e55a0f')}
-              onMouseLeave={(e) => !isLoading && (e.currentTarget.style.backgroundColor = '#F26419')}
+              onMouseEnter={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#e55a0f')}
+              onMouseLeave={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#F26419')}
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              {isSubmitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
 

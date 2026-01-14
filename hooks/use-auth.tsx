@@ -8,7 +8,7 @@ interface User {
   id: string
   name: string
   email: string
-  role: 'super_admin' | 'author' | 'reviewer' | 'editor'
+  role: 'super_admin' | 'user'
   institution?: string
   isApproved: boolean
 }
@@ -27,7 +27,6 @@ interface RegisterData {
   email: string
   password: string
   institution?: string
-  role: 'author' | 'reviewer' | 'editor'
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)

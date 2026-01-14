@@ -3,55 +3,48 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Mail, Lock, User, Building2, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, Building2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
+import { signupFormSchema, type SignupFormInput } from "@/lib/validations/signup"
 
 export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    institution: "",
-    password: "",
-    confirmPassword: "",
-    role: "author" as "author" | "reviewer" | "editor",
-  })
-  const { register } = useAuth()
+  const { register: registerUser } = useAuth()
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SignupFormInput>({
+    resolver: zodResolver(signupFormSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      institution: "",
+      password: "",
+      confirmPassword: "",
+      terms: false,
+    },
+  })
+
+  const onSubmit = async (data: SignupFormInput) => {
     setSuccess(false)
 
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters long")
-      return
-    }
-
-    setIsLoading(true)
-
     try {
-      await register({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        institution: formData.institution || undefined,
-        role: formData.role,
+      await registerUser({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        institution: data.institution || undefined,
       })
       setSuccess(true)
       toast.success("Registration successful! Your account is pending approval.")
@@ -59,18 +52,8 @@ export default function SignUpPage() {
         router.push("/auth/signin")
       }, 3000)
     } catch (err: any) {
-      setError(err.message || "Failed to register. Please try again.")
       toast.error(err.message || "Registration failed")
-    } finally {
-      setIsLoading(false)
     }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    })
   }
 
   return (
@@ -99,9 +82,7 @@ export default function SignUpPage() {
             </span>
           </Link>
           <div className="flex items-center justify-center gap-2 mb-3">
-            <Sparkles className="h-5 w-5 text-accent/60" />
             <h1 className="text-3xl font-bold text-foreground">Create your account</h1>
-            <Sparkles className="h-5 w-5 text-primary/60" />
           </div>
           <p className="text-muted-foreground text-base">Join Sevivra to start collaborating on research</p>
         </div>
@@ -111,19 +92,13 @@ export default function SignUpPage() {
           {/* Decorative gradient border effect */}
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-accent/5 via-transparent to-primary/5 opacity-50 pointer-events-none"></div>
           <div className="relative z-10">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          )}
           {success && (
             <div className="mb-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
               <span>Registration successful! Your account is pending approval. Redirecting to sign in...</span>
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {/* Name Field */}
             <div className="space-y-2.5">
               <Label htmlFor="name" className="text-sm font-semibold text-foreground">
@@ -133,15 +108,22 @@ export default function SignUpPage() {
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
                 <Input
                   id="name"
-                  name="name"
                   type="text"
                   placeholder="John Doe"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="pl-11 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
+                  {...register("name")}
+                  className={`pl-11 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.name
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
               </div>
+              {errors.name && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.name.message}
+                </p>
+              )}
             </div>
 
             {/* Email Field */}
@@ -153,15 +135,22 @@ export default function SignUpPage() {
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
                 <Input
                   id="email"
-                  name="email"
                   type="email"
                   placeholder="you@example.com"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="pl-11 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
+                  {...register("email")}
+                  className={`pl-11 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.email
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
               </div>
+              {errors.email && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.email.message}
+                </p>
+              )}
             </div>
 
             {/* Institution Field */}
@@ -173,39 +162,22 @@ export default function SignUpPage() {
                 <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
                 <Input
                   id="institution"
-                  name="institution"
                   type="text"
                   placeholder="University of Science"
-                  value={formData.institution}
-                  onChange={handleChange}
-                  className="pl-11 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
+                  {...register("institution")}
+                  className={`pl-11 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.institution
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
               </div>
-            </div>
-
-            {/* Role Field */}
-            <div className="space-y-2.5">
-              <Label htmlFor="role" className="text-sm font-semibold text-foreground">
-                Role
-              </Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: "author" | "reviewer" | "editor") =>
-                  setFormData({ ...formData, role: value })
-                }
-              >
-                <SelectTrigger className="h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50">
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="author">Author</SelectItem>
-                  <SelectItem value="reviewer">Reviewer</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Your account will need approval from the administrator before you can log in.
-              </p>
+              {errors.institution && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.institution.message}
+                </p>
+              )}
             </div>
 
             {/* Password Field */}
@@ -217,14 +189,14 @@ export default function SignUpPage() {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
                 <Input
                   id="password"
-                  name="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a strong password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="pl-11 pr-12 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
-                  minLength={8}
+                  {...register("password")}
+                  className={`pl-11 pr-12 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.password
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
                 <button
                   type="button"
@@ -239,10 +211,17 @@ export default function SignUpPage() {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-primary"></span>
-                Must be at least 8 characters long
-              </p>
+              {errors.password ? (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.password.message}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="w-1 h-1 rounded-full bg-primary"></span>
+                  Must be at least 8 characters long
+                </p>
+              )}
             </div>
 
             {/* Confirm Password Field */}
@@ -254,13 +233,14 @@ export default function SignUpPage() {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
                 <Input
                   id="confirmPassword"
-                  name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="pl-11 pr-12 h-12 border-2 border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all bg-background/50 hover:border-primary/50"
-                  required
+                  {...register("confirmPassword")}
+                  className={`pl-11 pr-12 h-12 border-2 transition-all bg-background/50 hover:border-primary/50 ${
+                    errors.confirmPassword
+                      ? "border-destructive focus:border-destructive focus:ring-2 focus:ring-destructive/20"
+                      : "border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
                 />
                 <button
                   type="button"
@@ -275,38 +255,56 @@ export default function SignUpPage() {
                   )}
                 </button>
               </div>
+              {errors.confirmPassword && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.confirmPassword.message}
+                </p>
+              )}
             </div>
 
             {/* Terms and Conditions */}
-            <div className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                id="terms"
-                className="h-4 w-4 mt-0.5 rounded border-border text-primary focus:ring-primary focus:ring-offset-0"
-                required
-              />
-              <Label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer leading-relaxed">
-                I agree to the{" "}
-                <Link href="/terms" className="text-primary hover:underline font-medium">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link href="/privacy" className="text-primary hover:underline font-medium">
-                  Privacy Policy
-                </Link>
-              </Label>
+            <div className="space-y-2.5">
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  {...register("terms")}
+                  className={`h-4 w-4 mt-0.5 rounded border-2 transition-all ${
+                    errors.terms
+                      ? "border-destructive text-destructive focus:ring-destructive/20"
+                      : "border-border text-primary focus:ring-primary focus:ring-offset-0"
+                  }`}
+                />
+                <Label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer leading-relaxed">
+                  I agree to the{" "}
+                  <Link href="/terms" className="text-primary hover:underline font-medium">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" className="text-primary hover:underline font-medium">
+                    Privacy Policy
+                  </Link>
+                </Label>
+              </div>
+              {errors.terms && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.terms.message}
+                </p>
+              )}
             </div>
 
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading || success}
+              disabled={isSubmitting || success}
               className="w-full h-12 text-base font-semibold text-white shadow-lg shadow-[#F26419]/25 hover:shadow-xl hover:shadow-[#F26419]/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#F26419' }}
-              onMouseEnter={(e) => !isLoading && !success && (e.currentTarget.style.backgroundColor = '#e55a0f')}
-              onMouseLeave={(e) => !isLoading && !success && (e.currentTarget.style.backgroundColor = '#F26419')}
+              onMouseEnter={(e) => !isSubmitting && !success && (e.currentTarget.style.backgroundColor = '#e55a0f')}
+              onMouseLeave={(e) => !isSubmitting && !success && (e.currentTarget.style.backgroundColor = '#F26419')}
             >
-              {isLoading ? "Creating account..." : success ? "Account created!" : "Create account"}
+              {isSubmitting ? "Creating account..." : success ? "Account created!" : "Create account"}
             </Button>
           </form>
 

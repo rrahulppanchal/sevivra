@@ -13,7 +13,7 @@ interface PendingUser {
   id: string
   name: string
   email: string
-  role: "author" | "reviewer" | "editor"
+  role: "super_admin" | "user"
   institution?: string
   createdAt: string
 }
@@ -85,12 +85,10 @@ export default function PendingUsersPage() {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case "author":
+      case "super_admin":
+        return "bg-red-500"
+      case "user":
         return "bg-blue-500"
-      case "reviewer":
-        return "bg-purple-500"
-      case "editor":
-        return "bg-green-500"
       default:
         return "bg-gray-500"
     }
