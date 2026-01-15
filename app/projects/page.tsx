@@ -2,21 +2,36 @@
 
 import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Filter, Quote, Download, ChevronLeft, ChevronRight, FlaskConical, Brain } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Filter, Quote, Download, ChevronLeft, ChevronRight, FlaskConical, Brain, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 
-interface Publication {
-  id: string
-  type: "Conference Paper" | "Journal Article" | "Review"
-  date: string
+type ProjectType = "Journal Articles" | "Conference Papers" | "Books & Chapters" | "Preprints"
+
+interface Project {
+  _id: string
   title: string
+  subtitle?: string
   description: string
-  authors: string
-  venue: string
-  citations: number
+  users: string[]
+  type: ProjectType
+  createdDate?: string
+  createdAt?: string
+}
+
+interface UserOption {
+  id: string
+  name: string
+  email: string
+  role: "super_admin" | "user"
 }
 
 interface Grant {
@@ -42,52 +57,79 @@ interface Patent {
 export default function ProjectsPage() {
   const [selectedYear, setSelectedYear] = useState("All")
   const [selectedTypes, setSelectedTypes] = useState<string[]>(["Journal Articles", "Conference Papers"])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [formErrors, setFormErrors] = useState<{ title?: string; description?: string; users?: string; type?: string }>({})
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [usersOptions, setUsersOptions] = useState<UserOption[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [usersError, setUsersError] = useState<string | null>(null)
+  const [formState, setFormState] = useState({
+    title: "",
+    subtitle: "",
+    description: "",
+    users: [] as string[],
+    type: "Journal Articles" as ProjectType,
+    createdDate: "",
+  })
 
-  const publications: Publication[] = [
-    {
-      id: "1",
-      type: "Conference Paper",
-      date: "Dec 2022",
-      title: "Optogenetic Regulation of Quantum Coherence in Microtubules",
-      description:
-        "We demonstrate a novel method for controlling quantum states within neuronal microtubules using targeted optogenetic stimulation, suggesting a pathway for non-invasive modulation of consciousness-related phenomena.",
-      authors: "J. Smith, A. Chen, R. Gupta",
-      venue: "Proceedings of the IEEE Conference on Neural Engineering",
-      citations: 18,
-    },
-    {
-      id: "2",
-      type: "Journal Article",
-      date: "Aug 2022",
-      title: "Temporal Dynamics of Synaptic Plasticity under Quantum Noise",
-      description:
-        "Analyzing how thermal noise affects entanglement duration in synaptic clefts. This paper argues that biological systems have evolved error-correcting codes similar to topological quantum computing.",
-      authors: "J. Smith, L. Wong",
-      venue: "Nature Neuroscience",
-      citations: 45,
-    },
-    {
-      id: "3",
-      type: "Review",
-      date: "Mar 2022",
-      title: "A Comprehensive Review of Bio-Quantum Interfaces",
-      description:
-        "A systematic review of existing literature on the interface between biological neural networks and quantum computing hardware.",
-      authors: "K. Miller, J. Smith",
-      venue: "Annual Reviews of Biophysics",
-      citations: 112,
-    },
-    {
-      id: "4",
-      type: "Journal Article",
-      date: "Jan 2021",
-      title: "Decoherence Time Scales in Warm Wet Systems",
-      description: "Challenging the Tegmark critique through experimental observation of shielded sub-spaces in protein structures.",
-      authors: "J. Smith et al.",
-      venue: "Physical Review Letters",
-      citations: 89,
-    },
-  ]
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setIsLoading(true)
+        setListError(null)
+        const response = await fetch("/api/projects")
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.message || payload?.error || "Failed to fetch projects")
+        }
+
+        setProjects(payload.data || [])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to fetch projects"
+        setListError(message)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProjects()
+  }, [])
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setUsersLoading(true)
+        setUsersError(null)
+        const response = await fetch("/api/users")
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.message || payload?.error || "Failed to fetch users")
+        }
+
+        setUsersOptions(payload.data || [])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to fetch users"
+        setUsersError(message)
+      } finally {
+        setUsersLoading(false)
+      }
+    }
+
+    fetchUsers()
+  }, [])
+
+  useEffect(() => {
+    if (isDialogOpen) {
+      setFormError(null)
+      setFormErrors({})
+    }
+  }, [isDialogOpen])
 
   const grants: Grant[] = [
     {
@@ -133,16 +175,191 @@ export default function ProjectsPage() {
     setSelectedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
   }
 
-  const getTypeBadgeColor = (type: string) => {
+  const getTypeBadgeColor = (type: ProjectType) => {
     switch (type) {
-      case "Conference Paper":
+      case "Conference Papers":
         return "text-[#F26419] bg-[#F26419]/10"
-      case "Journal Article":
+      case "Journal Articles":
         return "text-[#1DA619] bg-[#1DA619]/10"
-      case "Review":
+      case "Books & Chapters":
+        return "text-[#6B7280] bg-[#6B7280]/10"
+      case "Preprints":
         return "text-gray-500 bg-gray-200 dark:bg-gray-700"
       default:
         return "text-gray-500 bg-gray-200 dark:bg-gray-700"
+    }
+  }
+
+  const filteredProjects = useMemo(() => {
+    return projects.filter((project) => {
+      const typeMatch = selectedTypes.includes(project.type)
+      const dateValue = project.createdDate || project.createdAt
+      const year = dateValue ? new Date(dateValue).getFullYear() : null
+      const yearMatch =
+        selectedYear === "All" ||
+        (selectedYear === "Earlier" && year !== null && year < 2023) ||
+        (selectedYear !== "Earlier" && selectedYear !== "All" && year === Number(selectedYear))
+
+      return typeMatch && yearMatch
+    })
+  }, [projects, selectedTypes, selectedYear])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedTypes, selectedYear, projects])
+
+  const userNameMap = useMemo(() => {
+    return new Map(usersOptions.map((user) => [user.id, user.name]))
+  }, [usersOptions])
+
+  const selectedUsersLabel = useMemo(() => {
+    if (usersLoading) {
+      return "Loading users..."
+    }
+    if (usersError) {
+      return "Failed to load users"
+    }
+    if (formState.users.length === 0) {
+      return "Select users"
+    }
+    const names = usersOptions
+      .filter((user) => formState.users.includes(user.id))
+      .map((user) => user.name)
+    return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`
+  }, [formState.users, usersError, usersLoading, usersOptions])
+
+  const totalProjects = projects.length
+  const totalTypes = new Set(projects.map((project) => project.type)).size
+  const pageSize = 5
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / pageSize))
+  const paginatedProjects = filteredProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
+  const formatProjectDate = (value?: string) => {
+    if (!value) {
+      return "No date"
+    }
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return "No date"
+    }
+    return date.toLocaleDateString(undefined, { month: "short", year: "numeric" })
+  }
+
+  const handleInputChange = (field: keyof typeof formState) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormState((prev) => ({ ...prev, [field]: event.target.value }))
+    setFormErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
+
+  const toggleUserSelection = (userId: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      users: prev.users.includes(userId) ? prev.users.filter((id) => id !== userId) : [...prev.users, userId],
+    }))
+    setFormErrors((prev) => ({ ...prev, users: undefined }))
+  }
+
+  const validateForm = () => {
+    const nextErrors: { title?: string; description?: string; users?: string; type?: string } = {}
+
+    if (formState.title.trim().length < 2) {
+      nextErrors.title = "Title must be at least 2 characters."
+    }
+
+    if (formState.description.trim().length < 10) {
+      nextErrors.description = "Description must be at least 10 characters."
+    }
+
+    if (!formState.type) {
+      nextErrors.type = "Type is required."
+    }
+
+    if (formState.users.length === 0) {
+      nextErrors.users = "Select at least one user."
+    }
+
+    setFormErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  const handleCreateProject = async () => {
+    try {
+      setFormError(null)
+      if (usersError) {
+        setFormError("Users list is unavailable. Please try again.")
+        return
+      }
+      if (!validateForm()) {
+        return
+      }
+
+      const isEditing = !!editingProject
+      const payload = {
+        title: formState.title.trim(),
+        subtitle: formState.subtitle || undefined,
+        description: formState.description.trim(),
+        users: formState.users,
+        type: formState.type,
+        createdDate: formState.createdDate ? new Date(formState.createdDate).toISOString() : undefined,
+      }
+
+      const response = await fetch(isEditing ? `/api/projects/${editingProject?._id}` : "/api/projects", {
+        method: isEditing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || "Failed to create project")
+      }
+
+      if (isEditing) {
+        setProjects((prev) => prev.map((project) => (project._id === result.data._id ? result.data : project)))
+      } else {
+        setProjects((prev) => [result.data, ...prev])
+      }
+      setIsDialogOpen(false)
+      setEditingProject(null)
+      setFormState({
+        title: "",
+        subtitle: "",
+        description: "",
+        users: [],
+        type: "Journal Articles",
+        createdDate: "",
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create project"
+      setFormError(message)
+    }
+  }
+
+  const handleEditProject = (project: Project) => {
+    setEditingProject(project)
+    setFormState({
+      title: project.title,
+      subtitle: project.subtitle || "",
+      description: project.description,
+      users: project.users || [],
+      type: project.type,
+      createdDate: project.createdDate ? project.createdDate.split("T")[0] : "",
+    })
+    setIsDialogOpen(true)
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, { method: "DELETE" })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || "Failed to delete project")
+      }
+      setProjects((prev) => prev.filter((project) => project._id !== projectId))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete project"
+      setListError(message)
     }
   }
 
@@ -202,20 +419,6 @@ export default function ProjectsPage() {
               </div>
             </div>
 
-            {/* Quick Stats */}
-            <div className="mt-6 bg-white dark:bg-[#262626] rounded-xl shadow-sm p-6 border border-[#E5E0D4] dark:border-[#404040]">
-              <h3 className="text-sm font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-3">Quick Stats</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] p-3 rounded-lg text-center">
-                  <span className="block text-2xl font-bold text-[#F26419]">42</span>
-                  <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Total Pubs</span>
-                </div>
-                <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] p-3 rounded-lg text-center">
-                  <span className="block text-2xl font-bold text-[#1DA619]">856</span>
-                  <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Citations</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -225,53 +428,200 @@ export default function ProjectsPage() {
           <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
             <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
               <h2 className="text-xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">
-                Selected Publications <span className="text-base font-normal text-[#6B7280] dark:text-[#9CA3AF] ml-2">(Continued)</span>
+                Projects
               </h2>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-white dark:bg-[#262626] border-gray-200 dark:border-gray-700 text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] hover:border-[#1DA619] transition-all shadow-sm h-auto"
+                <Dialog
+                  open={isDialogOpen}
+                  onOpenChange={(open) => {
+                    setIsDialogOpen(open)
+                    if (!open) {
+                      setEditingProject(null)
+                    }
+                  }}
                 >
-                  Export Citation
-                </Button>
-                <Button
-                  variant="outline"
-                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-white dark:bg-[#262626] border-gray-200 dark:border-gray-700 text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#F26419] hover:border-[#F26419] transition-all shadow-sm h-auto"
-                >
-                  Sort by: Date
-                </Button>
+                  <DialogTrigger asChild>
+                    <Button className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#1DA619] text-white hover:bg-[#158514] transition-all shadow-sm h-auto">
+                      Add Project
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                      <DialogTitle>{editingProject ? "Edit Project" : "Add Project"}</DialogTitle>
+                      <DialogDescription>Provide the project details and save to the list.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Title</label>
+                        <Input value={formState.title} onChange={handleInputChange("title")} placeholder="Project title" />
+                        {formErrors.title && <p className="text-xs text-red-500">{formErrors.title}</p>}
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Subtitle</label>
+                        <Input value={formState.subtitle} onChange={handleInputChange("subtitle")} placeholder="Optional subtitle" />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Description</label>
+                        <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Project description" />
+                        {formErrors.description && <p className="text-xs text-red-500">{formErrors.description}</p>}
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Users</label>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-between text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]"
+                              disabled={usersLoading || !!usersError}
+                            >
+                              {selectedUsersLabel}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="w-72">
+                            {usersOptions.length === 0 && (
+                              <div className="px-2 py-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                No users available
+                              </div>
+                            )}
+                            {usersOptions.map((user) => (
+                              <DropdownMenuCheckboxItem
+                                key={user.id}
+                                checked={formState.users.includes(user.id)}
+                                onCheckedChange={() => toggleUserSelection(user.id)}
+                              >
+                                <div className="flex flex-col">
+                                  <span>{user.name}</span>
+                                  <span className="text-[10px] text-muted-foreground">{user.email}</span>
+                                </div>
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {usersError && <p className="text-xs text-red-500">{usersError}</p>}
+                        {formErrors.users && <p className="text-xs text-red-500">{formErrors.users}</p>}
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Type</label>
+                        <Select
+                          value={formState.type}
+                          onValueChange={(value: ProjectType) => {
+                            setFormState((prev) => ({ ...prev, type: value }))
+                            setFormErrors((prev) => ({ ...prev, type: undefined }))
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Journal Articles">Journal Articles</SelectItem>
+                            <SelectItem value="Conference Papers">Conference Papers</SelectItem>
+                            <SelectItem value="Books & Chapters">Books & Chapters</SelectItem>
+                            <SelectItem value="Preprints">Preprints</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {formErrors.type && <p className="text-xs text-red-500">{formErrors.type}</p>}
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Created Date</label>
+                        <Input type="date" value={formState.createdDate} onChange={handleInputChange("createdDate")} />
+                      </div>
+                    </div>
+                    {formError && (
+                      <p className="text-xs text-red-500">{formError}</p>
+                    )}
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCreateProject}
+                        disabled={!formState.title || !formState.description || usersLoading || !!usersError}
+                        className="bg-[#1DA619] text-white hover:bg-[#158514]"
+                      >
+                        {editingProject ? "Update Project" : "Save Project"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {publications.map((pub) => (
-                <div key={pub.id} className="p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+              {isLoading && (
+                <div className="p-6 text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading projects...</div>
+              )}
+              {!isLoading && listError && (
+                <div className="p-6 text-sm text-red-500">{listError}</div>
+              )}
+              {!isLoading && !listError && filteredProjects.length === 0 && (
+                <div className="p-6 text-sm text-[#6B7280] dark:text-[#9CA3AF]">No projects match the selected filters.</div>
+              )}
+              {!isLoading &&
+                !listError &&
+                paginatedProjects.map((project) => (
+                <div key={project._id} className="p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group relative">
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full", getTypeBadgeColor(pub.type))}>
-                          {pub.type}
+                        <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full", getTypeBadgeColor(project.type))}>
+                          {project.type}
                         </span>
-                        <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{pub.date}</span>
+                        <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{formatProjectDate(project.createdDate || project.createdAt)}</span>
                       </div>
                       <h3 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-2 group-hover:text-[#1DA619] transition-colors cursor-pointer">
-                        {pub.title}
+                        {project.title}
                       </h3>
-                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3 line-clamp-2">{pub.description}</p>
+                      {project.subtitle && (
+                        <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB] mb-2">{project.subtitle}</p>
+                      )}
+                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3 line-clamp-2">{project.description}</p>
                       <div className="flex items-center gap-4 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                        <span className="font-medium text-[#1F2937] dark:text-[#E5E7EB]">{pub.authors}</span>
-                        <span>•</span>
-                        <span className="italic">{pub.venue}</span>
+                        <span className="font-medium text-[#1F2937] dark:text-[#E5E7EB]">
+                          {project.users?.length
+                            ? project.users
+                                .map((userId) => userNameMap.get(userId) || "Unknown")
+                                .join(", ")
+                            : "No users"}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex items-center gap-1 text-[#6B7280] dark:text-[#9CA3AF]" title="Citations">
-                        <Quote className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">{pub.citations}</span>
-                      </div>
-                      <Button variant="ghost" size="icon" className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto">
-                        <Download className="h-5 w-5" />
-                      </Button>
-                    </div>
+                  </div>
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                      onClick={() => handleEditProject(project)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete project?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the project.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => handleDeleteProject(project._id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))}
@@ -279,23 +629,41 @@ export default function ProjectsPage() {
             {/* Pagination */}
             <div className="bg-gray-50 dark:bg-white/5 p-4 border-t border-[#E5E0D4] dark:border-[#404040] flex justify-center">
               <nav className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-white dark:hover:bg-gray-700 transition-colors h-auto">
-                  1
-                </Button>
-                <Button className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold bg-[#1DA619] text-white shadow-sm h-auto">
-                  2
-                </Button>
-                <Button variant="ghost" className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-white dark:hover:bg-gray-700 transition-colors h-auto">
-                  3
-                </Button>
-                <span className="text-[#6B7280] dark:text-[#9CA3AF]">...</span>
-                <Button variant="ghost" className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-white dark:hover:bg-gray-700 transition-colors h-auto">
-                  8
-                </Button>
-                <Button variant="ghost" size="icon" className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto">
+                {Array.from({ length: totalPages }, (_, index) => {
+                  const page = index + 1
+                  const isActive = page === currentPage
+                  return (
+                    <Button
+                      key={page}
+                      variant={isActive ? "default" : "ghost"}
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium transition-colors h-auto",
+                        isActive
+                          ? "bg-[#1DA619] text-white shadow-sm"
+                          : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-white dark:hover:bg-gray-700"
+                      )}
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </Button>
+                  )
+                })}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </nav>
@@ -303,71 +671,7 @@ export default function ProjectsPage() {
           </div>
 
           {/* Grants and Patents Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Research Grants */}
-            <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">Research Grants</h2>
-                <Link href="#" className="text-xs font-semibold text-[#F26419] hover:underline">
-                  View All
-                </Link>
-              </div>
-              <div className="space-y-4">
-                {grants.map((grant) => (
-                  <div
-                    key={grant.id}
-                    className="flex gap-4 p-3 rounded-lg border border-transparent hover:border-gray-100 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-                  >
-                    <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center", grant.iconColor)}>
-                      {grant.icon}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-[#1F2937] dark:text-[#E5E7EB]">{grant.title}</h4>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        {grant.period} • {grant.amount}
-                      </p>
-                      <span
-                        className={cn(
-                          "inline-block mt-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm",
-                          grant.status === "Active"
-                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
-                        )}
-                      >
-                        {grant.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Patents */}
-            <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">Patents</h2>
-                <Link href="#" className="text-xs font-semibold text-[#F26419] hover:underline">
-                  View All
-                </Link>
-              </div>
-              <div className="space-y-4">
-                {patents.map((patent) => (
-                  <div
-                    key={patent.id}
-                    className={cn("p-3 border-l-2 bg-gray-50 dark:bg-white/5 rounded-r-lg", patent.borderColor)}
-                  >
-                    <div className="flex justify-between items-start">
-                      <h4 className="text-sm font-semibold text-[#1F2937] dark:text-[#E5E7EB] pr-4">{patent.title}</h4>
-                      <span className="text-xs font-mono text-[#6B7280] dark:text-[#9CA3AF]">{patent.number}</span>
-                    </div>
-                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
-                      {patent.filed ? `Filed: ${patent.filed} • ${patent.status}` : `Issued: ${patent.issued}`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+         
         </div>
       </main>
 
