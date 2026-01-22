@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useParams } from "next/navigation"
 import { Send, Plus, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
@@ -15,14 +14,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
+import { ChatHeader } from "../layout/ChatHeader"
 
 interface ChatMessage {
   id: string
   type: "user" | "ai"
   content: string
   timestamp: Date
+}
+
+interface Manuscript {
+  id: string
+  title: string
+  content: string
 }
 
 interface Collaborator {
@@ -43,9 +48,47 @@ interface Comment {
 }
 
 export default function ChatPage() {
-  const params = useParams()
-  const documentId = params.id as string
+  const manuscriptOptions: Manuscript[] = [
+    {
+      id: "manuscript-1",
+      title: "Quantum Entanglement in Neural Networks",
+      content: `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
+    <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Ava Chen</strong> • Rahul Gupta</p>
+    <h2>Abstract</h2>
+    <p>Recent advances in quantum biology suggest that non-trivial quantum effects may play a functional role in brain dynamics. In this paper, we propose a novel model where quantum entanglement within microtubules influences the synaptic plasticity of neural networks. By integrating the Orch-OR theory with modern deep learning architectures, we demonstrate that quantum-coherent states can theoretically accelerate learning rates in biological systems.</p>
+    <h2>1. Introduction</h2>
+    <p>The intersection of quantum mechanics and neuroscience has long been a subject of contentious debate. While the "warm, wet, and noisy" environment of the brain was thought to prohibit sustained quantum coherence, recent experimental evidence points to the contrary. <span class="bg-yellow-200 rounded px-1 cursor-pointer border-b-2 border-yellow-400">Specifically, the discovery of long-lived coherence in photosynthetic complexes</span> suggests biological systems have evolved mechanisms to protect quantum states.</p>
+    <p>Our research builds upon the foundational work of Penrose and Hameroff, extending it into the domain of computational neuroscience. We aim to bridge the gap between abstract quantum theories and empirically observable neural phenomena.</p>`,
+    },
+    {
+      id: "manuscript-2",
+      title: "Neural Plasticity and Memory Encoding",
+      content: `<h1>Neural Plasticity and Memory Encoding: A Systems Perspective</h1>
+    <p><strong>Dr. Ava Chen</strong> • Rahul Gupta • <strong>Dr. Samuel Ortiz</strong></p>
+    <h2>Abstract</h2>
+    <p>This manuscript examines synaptic plasticity mechanisms that shape long-term memory formation. We analyze spike-timing dependent plasticity across cortical regions and propose a consolidation model that unifies behavioral and electrophysiological findings.</p>
+    <h2>1. Introduction</h2>
+    <p>Memory encoding is driven by activity-dependent changes in synaptic efficacy. We review experimental evidence and describe a computational model that links hippocampal replay to cortical storage.</p>`,
+    },
+    {
+      id: "manuscript-3",
+      title: "Quantum Decoherence in Microtubules",
+      content: `<h1>Quantum Decoherence in Microtubules: Constraints on Biological Coherence</h1>
+    <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Mei Wong</strong> • Rahul Gupta</p>
+    <h2>Abstract</h2>
+    <p>We evaluate competing decoherence timescales in microtubule structures and discuss implications for quantum-assisted cognition. Experimental constraints and model limitations are outlined.</p>
+    <h2>1. Introduction</h2>
+    <p>Decoherence in biological systems remains a critical bottleneck for quantum cognition theories. We survey thermal noise models and compare them to recent measurements.</p>`,
+    },
+  ]
 
+  const initialManuscriptContents = manuscriptOptions.reduce<Record<string, string>>((acc, item) => {
+    acc[item.id] = item.content
+    return acc
+  }, {})
+
+  const [activeManuscriptId, setActiveManuscriptId] = useState(manuscriptOptions[0].id)
+  const [manuscriptContents, setManuscriptContents] = useState<Record<string, string>>(initialManuscriptContents)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -76,7 +119,7 @@ export default function ChatPage() {
   const [currentHeading, setCurrentHeading] = useState<1 | 2 | 3 | 4 | null>(null)
   const [isBoldActive, setIsBoldActive] = useState(false)
   const [isItalicActive, setIsItalicActive] = useState(false)
-  const [selectedModel, setSelectedModel] = useState("gemini-3-flash-preview")
+  const [selectedModel, setSelectedModel] = useState("gpt-4-research")
   const [isOutlineExpanded, setIsOutlineExpanded] = useState(true)
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(true)
 
@@ -87,18 +130,10 @@ export default function ChatPage() {
   ]
 
   const getModelName = (modelId: string) => {
-    return aiModels.find((m) => m.id === modelId)?.name || "Gemini 1.5 Flash"
+    return aiModels.find((m) => m.id === modelId)?.name || "GPT-4 (Research)"
   }
 
-  const [documentContent, setDocumentContent] = useState(
-    `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
-    <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Ava Chen</strong> • Rahul Gupta</p>
-    <h2>Abstract</h2>
-    <p>Recent advances in quantum biology suggest that non-trivial quantum effects may play a functional role in brain dynamics. In this paper, we propose a novel model where quantum entanglement within microtubules influences the synaptic plasticity of neural networks. By integrating the Orch-OR theory with modern deep learning architectures, we demonstrate that quantum-coherent states can theoretically accelerate learning rates in biological systems.</p>
-    <h2>1. Introduction</h2>
-    <p>The intersection of quantum mechanics and neuroscience has long been a subject of contentious debate. While the "warm, wet, and noisy" environment of the brain was thought to prohibit sustained quantum coherence, recent experimental evidence points to the contrary. <span class="bg-yellow-200 rounded px-1 cursor-pointer border-b-2 border-yellow-400">Specifically, the discovery of long-lived coherence in photosynthetic complexes</span> suggests biological systems have evolved mechanisms to protect quantum states.</p>
-    <p>Our research builds upon the foundational work of Penrose and Hameroff, extending it into the domain of computational neuroscience. We aim to bridge the gap between abstract quantum theories and empirically observable neural phenomena.</p>`,
-  )
+  const [documentContent, setDocumentContent] = useState(manuscriptOptions[0].content)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   const editorRef = useRef<RichTextEditorRef>(null)
@@ -110,6 +145,20 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    const current = manuscriptOptions.find((item) => item.id === activeManuscriptId)
+    if (current) {
+      setDocumentContent(manuscriptContents[current.id] ?? current.content)
+    }
+  }, [activeManuscriptId, manuscriptContents])
+
+  useEffect(() => {
+    setManuscriptContents((prev) => ({
+      ...prev,
+      [activeManuscriptId]: documentContent,
+    }))
+  }, [activeManuscriptId, documentContent])
 
   // Update active states for toolbar buttons when document content changes
   useEffect(() => {
@@ -134,16 +183,49 @@ export default function ChatPage() {
     setInput("")
     setIsLoading(true)
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: input,
+          documentContent,
+          manuscriptTitle: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to get response from Gemini.")
+      }
+
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: "ai",
-        content: "This is a simulated response. Connect to your AI service for real functionality.",
+        content: result?.reply || "I couldn't generate a response.",
         timestamp: new Date(),
       }
+
       setMessages((prev) => [...prev, aiMessage])
+
+      if (result?.updatedContent) {
+        setDocumentContent(result.updatedContent)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to get response from Gemini."
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          type: "ai",
+          content: message,
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -170,8 +252,22 @@ export default function ChatPage() {
   }, [])
 
   const collaborators: Collaborator[] = [
-    { id: "1", name: "Ava Chen", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDmE4XDiJDaZscaqQngU5bviYMhzLAI1BMes3fV6128hPR4r3AjbTyziWuPM8EQHVFyd-dqfmj7yxHoRL6PZ6pw0EnaHQClxxJnGvm_UjEjt9Y1We1m-DpKyBlnwIQcgfNBzHK_aD5b_7FGbh517gyltIIMVQyGgHhOJi1OuUe8M8GRD8aaqHHgbkV5Jd-__xMhNsG8fLYZ7WG2uqXuWNgujOsFdJxBkl6kzsVodVn5UeT1Cx23tilp-sYucYyMUMziFdGDk8kyoKtZ", initials: "AC", isEditing: true },
-    { id: "2", name: "Rahul Gupta", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCUNCwoS7Gavceo8S0QGnOkVL1GmE0td-bBJvOtSvF83Zg7lyXKtgwl3hXwEnx_RWFQJwPSRymKgTN1G9fxZ8bkCoMAji5lHzZ68uOlAAT6ADKx6M8L4SMVQld17zyE6AA8HwcJNPJF7LsI68PbKT7f52OiL-qjzSS6FJh6uSEJrswwoMrRdgQejK_F3c186_4osTdb3ISJkp6w2hesgpXUbCk1fkdnGhcr3swgPyYNggOopvUflOrGFy2LQBgzOs7nQa0SgTdHH-VA", initials: "RG", isEditing: false },
+    {
+      id: "1",
+      name: "Ava Chen",
+      avatar:
+        "https://lh3.googleusercontent.com/aida-public/AB6AXuDmE4XDiJDaZscaqQngU5bviYMhzLAI1BMes3fV6128hPR4r3AjbTyziWuPM8EQHVFyd-dqfmj7yxHoRL6PZ6pw0EnaHQClxxJnGvm_UjEjt9Y1We1m-DpKyBlnwIQcgfNBzHK_aD5b_7FGbh517gyltIIMVQyGgHhOJi1OuUe8M8GRD8aaqHHgbkV5Jd-__xMhNsG8fLYZ7WG2uqXuWNgujOsFdJxBkl6kzsVodVn5UeT1Cx23tilp-sYucYyMUMziFdGDk8kyoKtZ",
+      initials: "AC",
+      isEditing: true,
+    },
+    {
+      id: "2",
+      name: "Rahul Gupta",
+      avatar:
+        "https://lh3.googleusercontent.com/aida-public/AB6AXuCUNCwoS7Gavceo8S0QGnOkVL1GmE0td-bBJvOtSvF83Zg7lyXKtgwl3hXwEnx_RWFQJwPSRymKgTN1G9fxZ8bkCoMAji5lHzZ68uOlAAT6ADKx6M8L4SMVQld17zyE6AA8HwcJNPJF7LsI68PbKT7f52OiL-qjzSS6FJh6uSEJrswwoMrRdgQejK_F3c186_4osTdb3ISJkp6w2hesgpXUbCk1fkdnGhcr3swgPyYNggOopvUflOrGFy2LQBgzOs7nQa0SgTdHH-VA",
+      initials: "RG",
+      isEditing: false,
+    },
   ]
 
   const [comments, setComments] = useState<Comment[]>([
@@ -209,7 +305,11 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header />
+      <ChatHeader
+        manuscripts={manuscriptOptions.map(({ id, title }) => ({ id, title }))}
+        activeManuscriptId={activeManuscriptId}
+        onManuscriptChange={setActiveManuscriptId}
+      />
       <div className="flex h-full bg-[#F5F1E6] overflow-hidden">
         {/* Mobile Overlay */}
         {(leftSidebarOpen || rightSidebarOpen) && (

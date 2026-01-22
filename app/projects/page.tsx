@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Filter, Quote, Download, ChevronLeft, ChevronRight, FlaskConical, Brain, Pencil, Trash2 } from "lucide-react"
+import { Filter, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -32,26 +32,6 @@ interface UserOption {
   name: string
   email: string
   role: "super_admin" | "user"
-}
-
-interface Grant {
-  id: string
-  title: string
-  period: string
-  amount: string
-  status: "Active" | "Completed"
-  icon: React.ReactNode
-  iconColor: string
-}
-
-interface Patent {
-  id: string
-  title: string
-  number: string
-  filed?: string
-  issued?: string
-  status: "Pending" | "Issued"
-  borderColor: string
 }
 
 export default function ProjectsPage() {
@@ -130,46 +110,6 @@ export default function ProjectsPage() {
       setFormErrors({})
     }
   }, [isDialogOpen])
-
-  const grants: Grant[] = [
-    {
-      id: "1",
-      title: "NSF Quantum Biology Initiative",
-      period: "2022 - 2025",
-      amount: "$1.2M",
-      status: "Active",
-      icon: <FlaskConical className="h-6 w-6" />,
-      iconColor: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
-    },
-    {
-      id: "2",
-      title: "Simons Foundation Brain Grant",
-      period: "2020 - 2023",
-      amount: "$450k",
-      status: "Completed",
-      icon: <Brain className="h-6 w-6" />,
-      iconColor: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400",
-    },
-  ]
-
-  const patents: Patent[] = [
-    {
-      id: "1",
-      title: "Method for Neural State Monitoring via Microtubule Resonance",
-      number: "US-2023-01452A",
-      filed: "Jan 15, 2023",
-      status: "Pending",
-      borderColor: "border-[#1DA619]",
-    },
-    {
-      id: "2",
-      title: "Quantum-Classical Hybrid Interface for BMI",
-      number: "US-9982711B2",
-      issued: "Nov 02, 2021",
-      status: "Issued",
-      borderColor: "border-[#F26419]",
-    },
-  ]
 
   const toggleType = (type: string) => {
     setSelectedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
@@ -364,9 +304,9 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] min-h-screen font-sans transition-colors duration-200">
+    <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] min-h-screen font-sans transition-colors duration-200 flex flex-col">
       <Header />
-      <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 grid grid-cols-12 gap-6 lg:gap-8 flex-1">
         {/* Left Sidebar - Filters and Stats */}
         <div className="col-span-12 lg:col-span-3 space-y-6">
           <div className="sticky top-24">
@@ -423,14 +363,14 @@ export default function ProjectsPage() {
         </div>
 
         {/* Main Content */}
-        <div className="col-span-12 lg:col-span-9 space-y-8">
+        <div className="col-span-12 lg:col-span-9 space-y-6 sm:space-y-8">
           {/* Publications Section */}
           <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
-            <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
-              <h2 className="text-xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">
+            <div className="p-5 sm:p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center bg-gray-50/50 dark:bg-white/5">
+              <h2 className="text-lg sm:text-xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">
                 Projects
               </h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Dialog
                   open={isDialogOpen}
                   onOpenChange={(open) => {
@@ -558,8 +498,8 @@ export default function ProjectsPage() {
               {!isLoading &&
                 !listError &&
                 paginatedProjects.map((project) => (
-                <div key={project._id} className="p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group relative">
-                  <div className="flex justify-between items-start gap-4">
+                <div key={project._id} className="p-5 sm:p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group relative">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full", getTypeBadgeColor(project.type))}>
@@ -567,14 +507,17 @@ export default function ProjectsPage() {
                         </span>
                         <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{formatProjectDate(project.createdDate || project.createdAt)}</span>
                       </div>
-                      <h3 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-2 group-hover:text-[#1DA619] transition-colors cursor-pointer">
+                      <Link
+                        href={`/projects/${project._id}`}
+                        className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-2 group-hover:text-[#1DA619] transition-colors cursor-pointer block"
+                      >
                         {project.title}
-                      </h3>
+                      </Link>
                       {project.subtitle && (
                         <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB] mb-2">{project.subtitle}</p>
                       )}
                       <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3 line-clamp-2">{project.description}</p>
-                      <div className="flex items-center gap-4 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                         <span className="font-medium text-[#1F2937] dark:text-[#E5E7EB]">
                           {project.users?.length
                             ? project.users
@@ -585,7 +528,7 @@ export default function ProjectsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="mt-2 flex gap-2 sm:mt-0 sm:absolute sm:top-4 sm:right-4 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -628,7 +571,7 @@ export default function ProjectsPage() {
             </div>
             {/* Pagination */}
             <div className="bg-gray-50 dark:bg-white/5 p-4 border-t border-[#E5E0D4] dark:border-[#404040] flex justify-center">
-              <nav className="flex items-center gap-2">
+              <nav className="flex flex-wrap items-center justify-center gap-2">
                 <Button
                   variant="ghost"
                   size="icon"
