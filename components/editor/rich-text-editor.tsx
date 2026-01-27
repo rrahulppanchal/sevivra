@@ -5,7 +5,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
 import { TextStyle } from "@tiptap/extension-text-style"
-import { useImperativeHandle, forwardRef } from "react"
+import { useImperativeHandle, forwardRef, useEffect, useRef } from "react"
 
 interface RichTextEditorProps {
   content: string
@@ -95,6 +95,8 @@ const TextTransform = TextStyle.extend({
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   ({ content, onChange, readOnly = false }, ref) => {
+    const lastSyncedHtmlRef = useRef<string>(content)
+    const suppressOnUpdateRef = useRef(false)
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
@@ -113,9 +115,24 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       editable: !readOnly,
       immediatelyRender: false,
       onUpdate: ({ editor }) => {
-        onChange(editor.getHTML())
+        if (suppressOnUpdateRef.current) {
+          return
+        }
+        const html = editor.getHTML()
+        lastSyncedHtmlRef.current = html
+        onChange(html)
       },
     })
+
+    useEffect(() => {
+      if (!editor) return
+      if (lastSyncedHtmlRef.current !== content) {
+        lastSyncedHtmlRef.current = content
+        suppressOnUpdateRef.current = true
+        editor.commands.setContent(content, false)
+        suppressOnUpdateRef.current = false
+      }
+    }, [content, editor])
 
     useImperativeHandle(ref, () => ({
       toggleBold: () => {

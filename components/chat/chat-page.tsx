@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Send, Plus, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { ChatHeader } from "../layout/ChatHeader"
+import { useAuth } from "@/hooks/use-auth"
 
 interface ChatMessage {
   id: string
@@ -30,6 +31,20 @@ interface Manuscript {
   content: string
 }
 
+interface ManuscriptRecord {
+  id: string
+  title: string
+  contentHtml: string
+  updatedAt: string
+}
+
+interface OutlineItem {
+  id: string
+  text: string
+  level: number
+  index: number
+}
+
 interface Collaborator {
   id: string
   name: string
@@ -41,54 +56,88 @@ interface Collaborator {
 interface Comment {
   id: string
   author: string
-  time: string
   content: string
   avatar: string
+  createdAt: string
   isHighlighted?: boolean
 }
 
-export default function ChatPage() {
-  const manuscriptOptions: Manuscript[] = [
-    {
-      id: "manuscript-1",
-      title: "Quantum Entanglement in Neural Networks",
-      content: `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
+const MANUSCRIPT_OPTIONS: Manuscript[] = [
+  {
+    id: "manuscript-1",
+    title: "Quantum Entanglement in Neural Networks",
+    content: `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
     <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Ava Chen</strong> • Rahul Gupta</p>
     <h2>Abstract</h2>
     <p>Recent advances in quantum biology suggest that non-trivial quantum effects may play a functional role in brain dynamics. In this paper, we propose a novel model where quantum entanglement within microtubules influences the synaptic plasticity of neural networks. By integrating the Orch-OR theory with modern deep learning architectures, we demonstrate that quantum-coherent states can theoretically accelerate learning rates in biological systems.</p>
     <h2>1. Introduction</h2>
     <p>The intersection of quantum mechanics and neuroscience has long been a subject of contentious debate. While the "warm, wet, and noisy" environment of the brain was thought to prohibit sustained quantum coherence, recent experimental evidence points to the contrary. <span class="bg-yellow-200 rounded px-1 cursor-pointer border-b-2 border-yellow-400">Specifically, the discovery of long-lived coherence in photosynthetic complexes</span> suggests biological systems have evolved mechanisms to protect quantum states.</p>
     <p>Our research builds upon the foundational work of Penrose and Hameroff, extending it into the domain of computational neuroscience. We aim to bridge the gap between abstract quantum theories and empirically observable neural phenomena.</p>`,
-    },
-    {
-      id: "manuscript-2",
-      title: "Neural Plasticity and Memory Encoding",
-      content: `<h1>Neural Plasticity and Memory Encoding: A Systems Perspective</h1>
+  },
+  {
+    id: "manuscript-2",
+    title: "Neural Plasticity and Memory Encoding",
+    content: `<h1>Neural Plasticity and Memory Encoding: A Systems Perspective</h1>
     <p><strong>Dr. Ava Chen</strong> • Rahul Gupta • <strong>Dr. Samuel Ortiz</strong></p>
     <h2>Abstract</h2>
     <p>This manuscript examines synaptic plasticity mechanisms that shape long-term memory formation. We analyze spike-timing dependent plasticity across cortical regions and propose a consolidation model that unifies behavioral and electrophysiological findings.</p>
     <h2>1. Introduction</h2>
     <p>Memory encoding is driven by activity-dependent changes in synaptic efficacy. We review experimental evidence and describe a computational model that links hippocampal replay to cortical storage.</p>`,
-    },
-    {
-      id: "manuscript-3",
-      title: "Quantum Decoherence in Microtubules",
-      content: `<h1>Quantum Decoherence in Microtubules: Constraints on Biological Coherence</h1>
+  },
+  {
+    id: "manuscript-3",
+    title: "Quantum Decoherence in Microtubules",
+    content: `<h1>Quantum Decoherence in Microtubules: Constraints on Biological Coherence</h1>
     <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Mei Wong</strong> • Rahul Gupta</p>
     <h2>Abstract</h2>
     <p>We evaluate competing decoherence timescales in microtubule structures and discuss implications for quantum-assisted cognition. Experimental constraints and model limitations are outlined.</p>
     <h2>1. Introduction</h2>
     <p>Decoherence in biological systems remains a critical bottleneck for quantum cognition theories. We survey thermal noise models and compare them to recent measurements.</p>`,
-    },
-  ]
+  },
+]
 
-  const initialManuscriptContents = manuscriptOptions.reduce<Record<string, string>>((acc, item) => {
-    acc[item.id] = item.content
+export default function ChatPage() {
+  const { user } = useAuth()
+  const escapeHtml = (value: string) => {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+  }
+
+  const formatAiReplyAsHtml = (reply: string) => {
+    const trimmed = reply.trim()
+    if (!trimmed) return ""
+    const escaped = escapeHtml(trimmed)
+    const paragraphs = escaped
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.replace(/\n/g, "<br />"))
+      .join("</p><p>")
+    return `<hr /><h2>AI Assistant Draft</h2><p>${paragraphs}</p>`
+  }
+
+  const appendAiReplyToDocument = (reply: string) => {
+    const html = formatAiReplyAsHtml(reply)
+    if (!html) return
+    setDocumentContent((prev) => `${prev}\n${html}`)
+  }
+
+  const manuscriptOptions = MANUSCRIPT_OPTIONS
+
+  const initialManuscripts = manuscriptOptions.reduce<Record<string, ManuscriptRecord>>((acc, item) => {
+    acc[item.id] = {
+      id: item.id,
+      title: item.title,
+      contentHtml: item.content,
+      updatedAt: new Date().toISOString(),
+    }
     return acc
   }, {})
 
   const [activeManuscriptId, setActiveManuscriptId] = useState(manuscriptOptions[0].id)
-  const [manuscriptContents, setManuscriptContents] = useState<Record<string, string>>(initialManuscriptContents)
+  const [manuscriptsState, setManuscriptsState] = useState<Record<string, ManuscriptRecord>>(initialManuscripts)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -134,9 +183,54 @@ export default function ChatPage() {
   }
 
   const [documentContent, setDocumentContent] = useState(manuscriptOptions[0].content)
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   const editorRef = useRef<RichTextEditorRef>(null)
+  const editorContainerRef = useRef<HTMLDivElement>(null)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isRestoringRef = useRef(false)
+
+  const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
+  const formatRelativeTime = (value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return "just now"
+    const diff = Date.now() - date.getTime()
+    const seconds = Math.floor(diff / 1000)
+    if (seconds < 60) return "just now"
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
+  }
+
+  const manuscriptsJson = useMemo(() => {
+    return Object.values(manuscriptsState).map((record) => ({
+      id: record.id,
+      title: record.title,
+      updatedAt: record.updatedAt,
+      contentHtml: record.contentHtml,
+      timeline: outlineItems.map((item) => ({
+        id: item.id,
+        text: item.text,
+        level: item.level,
+        index: item.index,
+      })),
+    }))
+  }, [manuscriptsState, outlineItems])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -149,16 +243,161 @@ export default function ChatPage() {
   useEffect(() => {
     const current = manuscriptOptions.find((item) => item.id === activeManuscriptId)
     if (current) {
-      setDocumentContent(manuscriptContents[current.id] ?? current.content)
+      const nextContent = manuscriptsState[current.id]?.contentHtml ?? current.content
+      setDocumentContent((prev) => (prev === nextContent ? prev : nextContent))
     }
-  }, [activeManuscriptId, manuscriptContents])
+  }, [activeManuscriptId, manuscriptsState])
 
   useEffect(() => {
-    setManuscriptContents((prev) => ({
-      ...prev,
-      [activeManuscriptId]: documentContent,
-    }))
-  }, [activeManuscriptId, documentContent])
+    const loadSession = async () => {
+      try {
+        isRestoringRef.current = true
+        const response = await fetch(`/api/chat?manuscriptId=${encodeURIComponent(activeManuscriptId)}`)
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result?.error || "Failed to load saved session.")
+        }
+
+        if (result?.data) {
+          setSessionId(result.data._id)
+          setMessages(
+            (result.data.messages || []).map((message: { type: "user" | "ai"; content: string; timestamp?: string }) => ({
+              id: Math.random().toString(36).slice(2),
+              type: message.type,
+              content: message.content,
+              timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+            })),
+          )
+          if (result.data.generatedContent) {
+            setDocumentContent(result.data.generatedContent)
+          }
+          if (Array.isArray(result.data.timeline)) {
+            setOutlineItems(result.data.timeline)
+          }
+          setSaveStatus("saved")
+        } else {
+          setSessionId(null)
+          setSaveStatus("idle")
+        }
+      } catch (error) {
+        setSaveStatus("error")
+        console.error("Failed to load chat session:", error)
+      } finally {
+        isRestoringRef.current = false
+      }
+    }
+
+    loadSession()
+  }, [activeManuscriptId])
+
+  useEffect(() => {
+    const loadComments = async () => {
+      try {
+        const response = await fetch(`/api/comments?manuscriptId=${encodeURIComponent(activeManuscriptId)}`)
+        const result = await response.json()
+        if (!response.ok) {
+          throw new Error(result?.error || "Failed to load comments.")
+        }
+        const items = Array.isArray(result?.data) ? result.data : []
+        setComments(
+          items.map((comment: { _id: string; author: string; content: string; avatar?: string; createdAt: string }) => ({
+            id: comment._id,
+            author: comment.author,
+            content: comment.content,
+            avatar: comment.avatar || getInitials(comment.author),
+            createdAt: comment.createdAt,
+          })),
+        )
+      } catch (error) {
+        console.error("Failed to load comments:", error)
+      }
+    }
+
+    loadComments()
+  }, [activeManuscriptId])
+
+  useEffect(() => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(documentContent, "text/html")
+    const headings = Array.from(doc.querySelectorAll("h1, h2, h3, h4"))
+    setOutlineItems(
+      headings.map((heading, index) => ({
+        id: `outline-${index}`,
+        text: heading.textContent?.trim() || "Untitled section",
+        level: Number(heading.tagName.replace("H", "")) || 2,
+        index,
+      })),
+    )
+  }, [documentContent])
+
+  useEffect(() => {
+    setManuscriptsState((prev) => {
+      const existing = prev[activeManuscriptId]
+      if (existing?.contentHtml === documentContent) {
+        return prev
+      }
+      return {
+        ...prev,
+        [activeManuscriptId]: {
+          id: activeManuscriptId,
+          title: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title || "Untitled",
+          contentHtml: documentContent,
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    })
+  }, [activeManuscriptId, documentContent, manuscriptOptions])
+
+  useEffect(() => {
+    if (isRestoringRef.current) return
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setSaveStatus("saving")
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: sessionId ?? undefined,
+            manuscriptId: activeManuscriptId,
+            manuscriptTitle: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title,
+            model: selectedModel,
+            messages: messages.map((message) => ({
+              type: message.type,
+              content: message.content,
+              timestamp: message.timestamp.toISOString(),
+            })),
+            generatedContent: documentContent,
+            timeline: outlineItems,
+          }),
+        })
+
+        const result = await response.json()
+        if (!response.ok) {
+          throw new Error(result?.error || "Failed to save.")
+        }
+
+        if (result?.data?.id) {
+          setSessionId(result.data.id)
+        }
+        setSaveStatus("saved")
+      } catch (error) {
+        console.error("Failed to save chat session:", error)
+        setSaveStatus("error")
+      }
+    }, 1200)
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [activeManuscriptId, documentContent, messages, outlineItems, manuscriptOptions, selectedModel, sessionId])
 
   // Update active states for toolbar buttons when document content changes
   useEffect(() => {
@@ -191,6 +430,8 @@ export default function ChatPage() {
           message: input,
           documentContent,
           manuscriptTitle: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title,
+          model: selectedModel,
+          manuscripts: manuscriptsJson,
         }),
       })
 
@@ -211,6 +452,8 @@ export default function ChatPage() {
 
       if (result?.updatedContent) {
         setDocumentContent(result.updatedContent)
+      } else if (result?.reply) {
+        appendAiReplyToDocument(result.reply)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to get response from Gemini."
@@ -232,6 +475,16 @@ export default function ChatPage() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const handleOutlineClick = (index: number) => {
+    const container = editorContainerRef.current
+    if (!container) return
+    const headings = container.querySelectorAll("h1, h2, h3, h4")
+    const target = headings[index] as HTMLElement | undefined
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" })
     }
   }
 
@@ -270,37 +523,49 @@ export default function ChatPage() {
     },
   ]
 
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: "1",
-      author: "Ava Chen",
-      time: "2h ago",
-      content: "Should we cite the 2022 counter-arguments regarding thermal decoherence here?",
-      avatar: "AC",
-    },
-    {
-      id: "2",
-      author: "Rahul Gupta",
-      time: "5h ago",
-      content: "@Ava Chen agreed. I'll add the references to the bibliography.",
-      avatar: "RG",
-      isHighlighted: true,
-    },
-  ])
+  const [comments, setComments] = useState<Comment[]>([])
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!commentInput.trim()) return
 
-    const newComment: Comment = {
-      id: Date.now().toString(),
-      author: "You",
-      time: "just now",
-      content: commentInput,
-      avatar: "JS",
-    }
+    const author = user?.name || "You"
+    const avatar = user?.name ? getInitials(user.name) : "JS"
+    const content = commentInput.trim()
 
-    setComments((prev) => [newComment, ...prev])
-    setCommentInput("")
+    try {
+      const response = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manuscriptId: activeManuscriptId,
+          author,
+          content,
+          avatar,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to add comment.")
+      }
+
+      const created = result?.data
+      if (created?._id) {
+        setComments((prev) => [
+          {
+            id: created._id,
+            author: created.author,
+            content: created.content,
+            avatar: created.avatar || avatar,
+            createdAt: created.createdAt,
+          },
+          ...prev,
+        ])
+      }
+      setCommentInput("")
+    } catch (error) {
+      console.error("Failed to add comment:", error)
+    }
   }
 
   return (
@@ -519,7 +784,12 @@ export default function ChatPage() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#6B7280]">Saved just now</span>
+              <span className="text-xs text-[#6B7280]">
+                {saveStatus === "saving" && "Saving..."}
+                {saveStatus === "saved" && "Saved"}
+                {saveStatus === "error" && "Save failed"}
+                {saveStatus === "idle" && "Not saved"}
+              </span>
               <Button variant="outline">
                 <Send className="h-4 w-4" />
                 Publish
@@ -528,8 +798,11 @@ export default function ChatPage() {
           </div>
 
           {/* Document Content */}
-          <div className="flex-1 overflow-y-auto p-8 lg:p-12 flex justify-center">
-            <div className="max-w-[850px] w-full bg-white shadow-lg min-h-[1000px] p-12 rounded-lg relative">
+          <div className="flex-1 overflow-y-auto p-8 lg:p-12 flex justify-center items-start">
+            <div
+              ref={editorContainerRef}
+              className="max-w-[850px] w-full bg-white shadow-lg min-h-[1000px] p-12 rounded-lg relative break-words [overflow-wrap:anywhere]"
+            >
               <RichTextEditor ref={editorRef} content={documentContent} onChange={setDocumentContent} />
             </div>
           </div>
@@ -572,13 +845,16 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {/* Outline Section */}
+          {/* Timeline Section */}
           <div className={cn("p-4 border-b border-[#E5E0D4] flex flex-col transition-all duration-300", isOutlineExpanded ? "flex-1 min-h-0" : "")}>
             <button
               onClick={() => setIsOutlineExpanded(!isOutlineExpanded)}
               className="flex items-center justify-between w-full mb-3 hover:opacity-80 transition-opacity"
             >
-              <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Outline</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Timeline</h3>
+                <span className="text-[10px] text-[#9CA3AF]">{outlineItems.length}</span>
+              </div>
               {isOutlineExpanded ? (
                 <ChevronUp className="h-4 w-4 text-[#6B7280]" />
               ) : (
@@ -587,29 +863,25 @@ export default function ChatPage() {
             </button>
             {isOutlineExpanded && (
               <nav className="flex-1 overflow-y-auto space-y-1">
-                <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#1F2937] bg-[#1DA619]/10 border-l-4 border-[#1DA619]">
-                  Abstract
-                </a>
-                <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                  1. Introduction
-                </a>
-                <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                  2. Theoretical Model
-                </a>
-                <div className="pl-4 space-y-1">
-                  <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                    2.1 Microtubule Dynamics
-                  </a>
-                  <a className="block px-3 py-1.5 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                    2.2 Entanglement Entropy
-                  </a>
-                </div>
-                <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                  3. Results
-                </a>
-                <a className="block px-3 py-2 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-gray-100 transition-colors">
-                  4. Discussion
-                </a>
+                {outlineItems.length === 0 ? (
+                  <p className="text-xs text-[#9CA3AF]">No headings found.</p>
+                ) : (
+                  outlineItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleOutlineClick(item.index)}
+                      className={cn(
+                        "w-full text-left rounded-md px-2 py-1 text-xs text-[#1F2937] hover:text-[#1DA619] hover:bg-gray-100 transition-colors",
+                        item.level === 1 && "font-semibold",
+                        item.level === 2 && "pl-4",
+                        item.level === 3 && "pl-6 text-[#4B5563]",
+                        item.level === 4 && "pl-8 text-[#6B7280]"
+                      )}
+                    >
+                      {item.text}
+                    </button>
+                  ))
+                )}
               </nav>
             )}
           </div>
@@ -645,7 +917,7 @@ export default function ChatPage() {
                     >
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs font-bold text-[#1F2937]">{comment.author}</span>
-                        <span className="text-[10px] text-[#6B7280]">{comment.time}</span>
+                        <span className="text-[10px] text-[#6B7280]">{formatRelativeTime(comment.createdAt)}</span>
                       </div>
                       <p className="text-xs text-[#1F2937] leading-relaxed">{comment.content}</p>
                     </div>
