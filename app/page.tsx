@@ -6,13 +6,15 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
+import { useEffect, useMemo, useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
 
 interface Project {
-  id: string
+  _id: string
   title: string
-  updated: string
-  collaborators: number
-  status: "Under Development" | "Under Review" | "Submitted"
+  users: string[]
+  updatedAt?: string
+  status?: "Under Development" | "Under Review" | "Submitted"
 }
 
 interface Notification {
@@ -43,29 +45,10 @@ interface SuggestedProject {
 }
 
 export default function HomePage() {
-  const projects: Project[] = [
-    {
-      id: "1",
-      title: "Quantum Entanglement in Neural Networks",
-      updated: "2 hours ago",
-      collaborators: 4,
-      status: "Under Development",
-    },
-    {
-      id: "2",
-      title: "Synaptic Plasticity in Deep Learning",
-      updated: "yesterday",
-      collaborators: 2,
-      status: "Under Review",
-    },
-    {
-      id: "3",
-      title: "Ethical Frameworks for AGI",
-      updated: "3 days ago",
-      collaborators: 1,
-      status: "Submitted",
-    },
-  ]
+  const { user } = useAuth()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(true)
+  const [projectsError, setProjectsError] = useState<string | null>(null)
 
   const notifications: Notification[] = [
     {
@@ -144,6 +127,41 @@ export default function HomePage() {
     },
   ]
 
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setProjectsLoading(true)
+        setProjectsError(null)
+        const response = await fetch("/api/projects")
+        const payload = await response.json()
+        if (!response.ok) {
+          throw new Error(payload?.message || payload?.error || "Failed to fetch projects")
+        }
+        setProjects(payload.data || [])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to fetch projects"
+        setProjectsError(message)
+      } finally {
+        setProjectsLoading(false)
+      }
+    }
+
+    fetchProjects()
+  }, [])
+
+  const topProjects = useMemo(() => projects.slice(0, 3), [projects])
+
+  const formatUpdatedAt = (value?: string) => {
+    if (!value) {
+      return "Unknown"
+    }
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown"
+    }
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  }
+
   return (
     <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] h-screen font-sans transition-colors duration-200">
       <Header />
@@ -153,7 +171,8 @@ export default function HomePage() {
           <header className="mb-10 flex justify-between items-end">
             <div>
               <h1 className="text-3xl lg:text-4xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB] mb-2">
-                <span className="bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent">Welcome</span> Dr. Julian Smith
+                <span className="bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent">Welcome</span>{" "}
+                {user?.name || "Researcher"}
               </h1>
             </div>
           </header>
@@ -162,36 +181,49 @@ export default function HomePage() {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">Projects</h2>
-              <Link href="#" className="text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
+              <Link href="/projects" className="text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
                 View All
               </Link>
             </div>
             <div className="bg-white dark:bg-[#262626] rounded-2xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
-              {projects.map((project, index) => (
-                <div
-                  key={project.id}
-                  className={cn(
-                    "p-5 hover:bg-gray-50 dark:hover:bg-[#262626]/50 transition-colors group cursor-pointer",
-                    index < projects.length - 1 && "border-b border-[#E5E0D4] dark:border-[#404040]"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <h3 className="font-medium text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors">
-                          {project.title}
-                        </h3>
-                        <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5">
-                          Updated {project.updated} • {project.collaborators} Collaborator{project.collaborators > 1 ? "s" : ""}
-                        </p>
+              {projectsLoading && (
+                <div className="p-5 text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading projects...</div>
+              )}
+              {!projectsLoading && projectsError && (
+                <div className="p-5 text-sm text-red-500">{projectsError}</div>
+              )}
+              {!projectsLoading && !projectsError && topProjects.length === 0 && (
+                <div className="p-5 text-sm text-[#6B7280] dark:text-[#9CA3AF]">No projects yet.</div>
+              )}
+              {!projectsLoading &&
+                !projectsError &&
+                topProjects.map((project, index) => (
+                  <Link
+                    key={project._id}
+                    href={`/projects/${project._id}`}
+                    className={cn(
+                      "block p-5 hover:bg-gray-50 dark:hover:bg-[#262626]/50 transition-colors group",
+                      index < topProjects.length - 1 && "border-b border-[#E5E0D4] dark:border-[#404040]"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <h3 className="font-medium text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors">
+                            {project.title}
+                          </h3>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5">
+                            Updated {formatUpdatedAt(project.updatedAt)} • {project.users?.length || 0} Collaborator
+                            {(project.users?.length || 0) !== 1 ? "s" : ""}
+                          </p>
+                        </div>
                       </div>
+                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#F5F1E6] text-stone-600 border border-[#E5E0D4] dark:bg-stone-800 dark:text-stone-300 dark:border-stone-700 whitespace-nowrap">
+                        {project.status || "Under Development"}
+                      </span>
                     </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#F5F1E6] text-stone-600 border border-[#E5E0D4] dark:bg-stone-800 dark:text-stone-300 dark:border-stone-700 whitespace-nowrap">
-                      {project.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                  </Link>
+                ))}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useMemo } from "react"
+import type { ElementType } from "react"
 import { Send, Plus, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
@@ -62,6 +63,19 @@ interface Comment {
   isHighlighted?: boolean
 }
 
+interface HtmlBlock {
+  tag: string
+  text: string
+  html: string
+}
+
+interface ReviewLine {
+  id: string
+  type: "equal" | "add" | "remove"
+  block: HtmlBlock
+  decision: "pending" | "accepted" | "rejected"
+}
+
 const MANUSCRIPT_OPTIONS: Manuscript[] = [
   {
     id: "manuscript-1",
@@ -118,10 +132,28 @@ export default function ChatPage() {
     return `<hr /><h2>AI Assistant Draft</h2><p>${paragraphs}</p>`
   }
 
+  const formatChatContentAsHtml = (content: string) => {
+    const escaped = escapeHtml(content)
+    const lines = escaped.split(/\r?\n/)
+    const listItems = lines.filter((line) => /^\s*\d+\.\s+/.test(line))
+    if (listItems.length > 0) {
+      const itemsHtml = listItems
+        .map((line) => line.replace(/^\s*\d+\.\s+/, ""))
+        .map((line) => line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"))
+        .map((line) => `<li>${line}</li>`)
+        .join("")
+      return `<ol class="list-decimal ml-5 space-y-1">${itemsHtml}</ol>`
+    }
+
+    return escaped
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br />")
+  }
+
   const appendAiReplyToDocument = (reply: string) => {
     const html = formatAiReplyAsHtml(reply)
-    if (!html) return
-    setDocumentContent((prev) => `${prev}\n${html}`)
+    if (!html) return ""
+    return `${documentContent}\n${html}`
   }
 
   const manuscriptOptions = MANUSCRIPT_OPTIONS
@@ -168,7 +200,7 @@ export default function ChatPage() {
   const [currentHeading, setCurrentHeading] = useState<1 | 2 | 3 | 4 | null>(null)
   const [isBoldActive, setIsBoldActive] = useState(false)
   const [isItalicActive, setIsItalicActive] = useState(false)
-  const [selectedModel, setSelectedModel] = useState("gpt-4-research")
+  const [selectedModel, setSelectedModel] = useState("gemini-3-flash-preview")
   const [isOutlineExpanded, setIsOutlineExpanded] = useState(true)
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(true)
 
@@ -182,7 +214,14 @@ export default function ChatPage() {
     return aiModels.find((m) => m.id === modelId)?.name || "GPT-4 (Research)"
   }
 
+  const modelStatus = isLoading ? "Analyzing request..." : "Idle"
+  const chatStatusMessage = isLoading ? "Analyzing the script..." : ""
+
   const [documentContent, setDocumentContent] = useState(manuscriptOptions[0].content)
+  const [isReviewing, setIsReviewing] = useState(false)
+  const [reviewLines, setReviewLines] = useState<ReviewLine[]>([])
+  const [pendingContent, setPendingContent] = useState<string | null>(null)
+  const [previousContent, setPreviousContent] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [sessionId, setSessionId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -215,6 +254,121 @@ export default function ChatPage() {
     if (hours < 24) return `${hours}h ago`
     const days = Math.floor(hours / 24)
     return `${days}d ago`
+  }
+
+  const htmlToBlocks = (html: string) => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, "text/html")
+    const blocks = Array.from(doc.body.querySelectorAll("h1, h2, h3, h4, p, li"))
+    if (blocks.length === 0) {
+      const text = (doc.body.textContent || "").trim()
+      return text ? [{ tag: "p", text, html: escapeHtml(text) }] : []
+    }
+    return blocks
+      .map((block) => ({
+        tag: block.tagName.toLowerCase(),
+        text: (block.textContent || "").trim(),
+        html: block.innerHTML || "",
+      }))
+      .filter((block) => block.text.length > 0)
+  }
+
+  const buildBlockDiff = (beforeHtml: string, afterHtml: string) => {
+    const before = htmlToBlocks(beforeHtml)
+    const after = htmlToBlocks(afterHtml)
+
+    const rows = before.length + 1
+    const cols = after.length + 1
+    const table: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0))
+
+    for (let i = 1; i < rows; i += 1) {
+      for (let j = 1; j < cols; j += 1) {
+        if (before[i - 1] === after[j - 1]) {
+          table[i][j] = table[i - 1][j - 1] + 1
+        } else {
+          table[i][j] = Math.max(table[i - 1][j], table[i][j - 1])
+        }
+      }
+    }
+
+    const result: Array<{ type: "equal" | "add" | "remove"; block: HtmlBlock }> = []
+    let i = before.length
+    let j = after.length
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && before[i - 1].text === after[j - 1].text && before[i - 1].tag === after[j - 1].tag) {
+        result.unshift({ type: "equal", block: before[i - 1] })
+        i -= 1
+        j -= 1
+      } else if (j > 0 && (i === 0 || table[i][j - 1] >= table[i - 1][j])) {
+        result.unshift({ type: "add", block: after[j - 1] })
+        j -= 1
+      } else if (i > 0) {
+        result.unshift({ type: "remove", block: before[i - 1] })
+        i -= 1
+      }
+    }
+
+    return result.map((item, index) => ({
+      id: `${item.type}-${index}`,
+      type: item.type,
+      block: item.block,
+      decision: "pending" as const,
+    }))
+  }
+
+  const startReview = (beforeContent: string, afterContent: string) => {
+    setPreviousContent(beforeContent)
+    setPendingContent(afterContent)
+    setReviewLines(buildBlockDiff(beforeContent, afterContent))
+    setIsReviewing(true)
+  }
+
+  const buildFinalContent = (lines: ReviewLine[]) => {
+    return lines
+      .filter((line) => {
+        if (line.type === "equal") return true
+        if (line.type === "add") return line.decision !== "rejected"
+        if (line.type === "remove") return line.decision === "rejected"
+        return false
+      })
+      .map((line) => `<${line.block.tag}>${line.block.html}</${line.block.tag}>`)
+      .join("")
+  }
+
+  const getBlockClassName = (tag: string) => {
+    switch (tag) {
+      case "h1":
+        return "text-4xl font-bold mt-6 mb-4"
+      case "h2":
+        return "text-3xl font-bold mt-5 mb-3"
+      case "h3":
+        return "text-2xl font-semibold mt-4 mb-2"
+      case "h4":
+        return "text-xl font-semibold mt-3 mb-2"
+      case "li":
+        return "list-disc ml-6 mb-2"
+      default:
+        return "mb-4 leading-relaxed"
+    }
+  }
+
+  const handleAcceptChanges = () => {
+    if (!pendingContent) return
+    const finalContent = buildFinalContent(reviewLines)
+    setDocumentContent(finalContent || pendingContent)
+    setIsReviewing(false)
+    setReviewLines([])
+    setPendingContent(null)
+    setPreviousContent(null)
+  }
+
+  const handleRejectChanges = () => {
+    if (!previousContent) return
+    setDocumentContent(previousContent)
+    setIsReviewing(false)
+    setReviewLines([])
+    setPendingContent(null)
+    setPreviousContent(null)
   }
 
   const manuscriptsJson = useMemo(() => {
@@ -451,9 +605,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, aiMessage])
 
       if (result?.updatedContent) {
-        setDocumentContent(result.updatedContent)
-      } else if (result?.reply) {
-        appendAiReplyToDocument(result.reply)
+        startReview(documentContent, result.updatedContent)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to get response from Gemini."
@@ -605,7 +757,7 @@ export default function ChatPage() {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -636,13 +788,31 @@ export default function ChatPage() {
                       : "bg-[#1DA619] text-white rounded-tr-none"
                   )}
                 >
-                  <p>{message.content}</p>
+                  <div
+                    className="whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ __html: formatChatContentAsHtml(message.content) }}
+                  />
                   {isLoading && message.id === messages[messages.length - 1]?.id && message.type === "ai" && (
                     <div className="mt-2 h-1 w-12 bg-gray-300 rounded-full animate-pulse" />
                   )}
                 </div>
               </div>
             ))}
+            {isLoading && (
+              <div className="flex items-center gap-3 text-xs text-[#6B7280]">
+                <div className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#1DA619]/10">
+                  <span className="text-[#1DA619] text-xs">🤖</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>{chatStatusMessage}</span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#1DA619] animate-pulse" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#1DA619] animate-pulse [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#1DA619] animate-pulse [animation-delay:300ms]" />
+                  </span>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -654,12 +824,14 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isLoading}
                 placeholder="Ask anything about your research..."
-                className="w-full bg-[#F5F1E6] border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#1DA619] focus:border-transparent outline-none resize-none h-24 text-[#1F2937] placeholder-[#6B7280]"
+                className="w-full bg-[#F5F1E6] border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#1DA619] focus:border-transparent outline-none resize-none h-24 text-[#1F2937] placeholder-[#6B7280] disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleSend}
-                className="absolute bottom-3 right-3 p-1.5 bg-[#1DA619] text-white rounded-lg hover:bg-green-600 transition-colors shadow-md"
+                disabled={isLoading}
+                className="absolute bottom-3 right-3 p-1.5 bg-[#1DA619] text-white rounded-lg hover:bg-green-600 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="h-4 w-4" />
               </button>
@@ -686,6 +858,15 @@ export default function ChatPage() {
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <div className="flex items-center gap-2 text-[10px] text-[#6B7280]">
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    isLoading ? "bg-[#F26419] animate-pulse" : "bg-[#1DA619]",
+                  )}
+                />
+                <span className={cn(isLoading && "text-[#F26419]")}>{modelStatus}</span>
+              </div>
             </div>
           </div>
         </aside>
@@ -784,6 +965,17 @@ export default function ChatPage() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
+              {isReviewing && (
+                <>
+                  <span className="text-xs text-[#F26419]">Review changes</span>
+                  <Button variant="outline" onClick={handleRejectChanges}>
+                    Reject
+                  </Button>
+                  <Button onClick={handleAcceptChanges} className="bg-[#1DA619] text-white hover:bg-[#158514]">
+                    Accept
+                  </Button>
+                </>
+              )}
               <span className="text-xs text-[#6B7280]">
                 {saveStatus === "saving" && "Saving..."}
                 {saveStatus === "saved" && "Saved"}
@@ -803,7 +995,62 @@ export default function ChatPage() {
               ref={editorContainerRef}
               className="max-w-[850px] w-full bg-white shadow-lg min-h-[1000px] p-12 rounded-lg relative break-words [overflow-wrap:anywhere]"
             >
-              <RichTextEditor ref={editorRef} content={documentContent} onChange={setDocumentContent} />
+              {isReviewing ? (
+                <div className="prose prose-lg max-w-none font-serif text-[#1F2937]">
+                  {reviewLines.map((line) => {
+                    const Tag: ElementType = line.block.tag as ElementType
+                    const isAdd = line.type === "add"
+                    const isRemove = line.type === "remove"
+                    const isRejected = line.decision === "rejected"
+                    const isAccepted = line.decision === "accepted"
+                    const bgColor = isAdd
+                      ? "#dcfce7"
+                      : isRemove
+                        ? "#fee2e2"
+                        : "transparent"
+                    const textColor = isAdd ? "#15803d" : isRemove ? "#b91c1c" : "#1F2937"
+                    const lineThrough = isRemove && !isRejected
+
+                    return (
+                      <div key={line.id} className="flex items-start gap-3">
+                        <span
+                          className="mt-2 inline-flex h-5 w-5 items-center justify-center text-xs font-mono"
+                          style={{ color: textColor }}
+                        >
+                          {isAdd ? "+" : isRemove ? "-" : " "}
+                        </span>
+                        <div className="flex-1">
+                          <Tag
+                            className={getBlockClassName(line.block.tag)}
+                            style={{
+                              backgroundColor: isRejected && isAdd ? "transparent" : bgColor,
+                              color: textColor,
+                              textDecoration: lineThrough ? "line-through" : "none",
+                              opacity: isRejected || (isAccepted && isRemove) ? 0.6 : 1,
+                              padding: "2px 4px",
+                              borderRadius: "4px",
+                              display: "inline-block",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: line.block.html }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {reviewLines.length > 0 && (
+                    <div className="mt-6 flex items-center justify-end gap-2">
+                      <Button variant="outline" onClick={handleRejectChanges}>
+                        Reject
+                      </Button>
+                      <Button onClick={handleAcceptChanges} className="bg-[#1DA619] text-white hover:bg-[#158514]">
+                        Accept
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <RichTextEditor ref={editorRef} content={documentContent} onChange={setDocumentContent} />
+              )}
             </div>
           </div>
         </section>
