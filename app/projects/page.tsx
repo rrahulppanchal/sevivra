@@ -13,6 +13,7 @@ import { Filter, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useAuth } from "@/hooks/use-auth"
 
 type ProjectType = "Journal Articles" | "Conference Papers" | "Books & Chapters" | "Preprints"
 
@@ -35,6 +36,7 @@ interface UserOption {
 }
 
 export default function ProjectsPage() {
+  const { user } = useAuth()
   const [selectedYear, setSelectedYear] = useState("All")
   const [selectedTypes, setSelectedTypes] = useState<string[]>(["Journal Articles", "Conference Papers"])
   const [projects, setProjects] = useState<Project[]>([])
@@ -55,6 +57,19 @@ export default function ProjectsPage() {
     type: "Journal Articles" as ProjectType,
     createdDate: "",
   })
+
+  useEffect(() => {
+    if (!user) return
+    setFormState((prev) => {
+      if (editingProject) {
+        return prev
+      }
+      if (prev.users.includes(user.id)) {
+        return prev
+      }
+      return { ...prev, users: [...prev.users, user.id] }
+    })
+  }, [editingProject, user])
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -192,6 +207,9 @@ export default function ProjectsPage() {
   }
 
   const toggleUserSelection = (userId: string) => {
+    if (user?.id && userId === user.id) {
+      return
+    }
     setFormState((prev) => ({
       ...prev,
       users: prev.users.includes(userId) ? prev.users.filter((id) => id !== userId) : [...prev.users, userId],
@@ -234,11 +252,15 @@ export default function ProjectsPage() {
       }
 
       const isEditing = !!editingProject
+      const users = new Set(formState.users)
+      if (user?.id) {
+        users.add(user.id)
+      }
       const payload = {
         title: formState.title.trim(),
         subtitle: formState.subtitle || undefined,
         description: formState.description.trim(),
-        users: formState.users,
+        users: Array.from(users),
         type: formState.type,
         createdDate: formState.createdDate ? new Date(formState.createdDate).toISOString() : undefined,
       }
@@ -266,7 +288,7 @@ export default function ProjectsPage() {
         title: "",
         subtitle: "",
         description: "",
-        users: [],
+        users: user?.id ? [user.id] : [],
         type: "Journal Articles",
         createdDate: "",
       })

@@ -159,72 +159,74 @@ export function Header() {
           </Button> */}
 
           {/* Notifications Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative text-foreground hover:bg-secondary">
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-accent" />
-                )}
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 sm:w-96">
-              <DropdownMenuLabel className="flex items-center justify-between">
-                <span>Notifications</span>
-                {unreadCount > 0 && (
-                  <span className="text-xs text-muted-foreground font-normal">
-                    {unreadCount} new
-                  </span>
-                )}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <div className="max-h-[400px] overflow-y-auto">
-                {notifications.map((notification) => {
-                  const Icon = notification.icon
-                  const iconColor =
-                    notification.type === "success"
-                      ? "text-emerald-600"
-                      : notification.type === "warning"
-                        ? "text-amber-600"
-                        : "text-blue-600"
+          {user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative text-foreground hover:bg-secondary">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-accent" />
+                  )}
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80 sm:w-96">
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>Notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="text-xs text-muted-foreground font-normal">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <div className="max-h-[400px] overflow-y-auto">
+                  {notifications.map((notification) => {
+                    const Icon = notification.icon
+                    const iconColor =
+                      notification.type === "success"
+                        ? "text-emerald-600"
+                        : notification.type === "warning"
+                          ? "text-amber-600"
+                          : "text-blue-600"
 
-                  return (
-                    <DropdownMenuItem
-                      key={notification.id}
-                      className="flex flex-col items-start gap-1 p-3 cursor-pointer hover:bg-secondary"
-                    >
-                      <div className="flex items-start gap-3 w-full">
-                        <Icon className={cn("h-5 w-5 mt-0.5 shrink-0", iconColor)} />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm text-foreground">
-                            {notification.title}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                            {notification.message}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {notification.time}
+                    return (
+                      <DropdownMenuItem
+                        key={notification.id}
+                        className="flex flex-col items-start gap-1 p-3 cursor-pointer hover:bg-secondary"
+                      >
+                        <div className="flex items-start gap-3 w-full">
+                          <Icon className={cn("h-5 w-5 mt-0.5 shrink-0", iconColor)} />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-foreground">
+                              {notification.title}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {notification.message}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {notification.time}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </DropdownMenuItem>
-                  )
-                })}
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="justify-center text-sm text-primary font-medium">
-                View all notifications
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="justify-center text-sm text-primary font-medium">
+                  View all notifications
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          {/* Profile Dropdown */}
-          {user && (
+          {/* Profile Dropdown / Sign In */}
+          {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2 px-2 hover:bg-secondary">
@@ -270,6 +272,10 @@ export function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : (
+            <Link href="/auth/signin">
+              <Button className="bg-[#1DA619] text-white hover:bg-[#158514]">Sign in</Button>
+            </Link>
           )}
         </div>
       </div>

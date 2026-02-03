@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import connectDB from '@/lib/db'
 import Project from '@/models/Project'
+import Manuscript from '@/models/Manuscript'
 import { projectCreateSchema, projectQuerySchema } from '@/lib/validations/project'
+import { getCurrentUser } from '@/lib/auth'
 
 const handleDbConnectionError = (dbError: any) => {
   console.error('Database connection error:', dbError)
@@ -28,6 +30,16 @@ const handleZodError = (error: ZodError) =>
     { status: 400 }
   )
 
+const buildDefaultManuscriptContent = (title: string) => {
+  const safeTitle = title
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+  return `<h1>${safeTitle}</h1><p></p>`
+}
+
 // POST - Create a new project
 export async function POST(request: NextRequest) {
   try {
@@ -49,16 +61,34 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
+    const currentUser = await getCurrentUser()
+    const users = new Set(validatedData.users ?? [])
+    if (currentUser?.id) {
+      users.add(currentUser.id)
+    }
+
     const project = new Project({
       title: validatedData.title,
       subtitle: validatedData.subtitle,
       description: validatedData.description,
-      users: validatedData.users,
+      users: Array.from(users),
       type: validatedData.type,
       createdDate: validatedData.createdDate ? new Date(validatedData.createdDate) : undefined,
     })
 
     await project.save()
+
+    try {
+      const defaultTitle = 'Manuscript 1'
+      await Manuscript.create({
+        projectId: project._id.toString(),
+        title: defaultTitle,
+        contentHtml: buildDefaultManuscriptContent(defaultTitle),
+        createdBy: currentUser?.id,
+      })
+    } catch (error) {
+      console.error('Failed to create default manuscript:', error)
+    }
 
     return NextResponse.json(
       {

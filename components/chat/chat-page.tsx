@@ -15,9 +15,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ChatHeader } from "../layout/ChatHeader"
 import { useAuth } from "@/hooks/use-auth"
+import { useParams, useRouter } from "next/navigation"
 
 interface ChatMessage {
   id: string
@@ -26,17 +30,12 @@ interface ChatMessage {
   timestamp: Date
 }
 
-interface Manuscript {
-  id: string
-  title: string
-  content: string
-}
-
 interface ManuscriptRecord {
   id: string
   title: string
   contentHtml: string
   updatedAt: string
+  createdAt?: string
 }
 
 interface OutlineItem {
@@ -52,6 +51,12 @@ interface Collaborator {
   avatar: string
   initials: string
   isEditing: boolean
+}
+
+interface UserOption {
+  id: string
+  name: string
+  email: string
 }
 
 interface Comment {
@@ -76,42 +81,21 @@ interface ReviewLine {
   decision: "pending" | "accepted" | "rejected"
 }
 
-const MANUSCRIPT_OPTIONS: Manuscript[] = [
-  {
-    id: "manuscript-1",
-    title: "Quantum Entanglement in Neural Networks",
-    content: `<h1>Quantum Entanglement in Neural Networks: A Theoretical Framework for Biological Cognition</h1>
-    <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Ava Chen</strong> • Rahul Gupta</p>
-    <h2>Abstract</h2>
-    <p>Recent advances in quantum biology suggest that non-trivial quantum effects may play a functional role in brain dynamics. In this paper, we propose a novel model where quantum entanglement within microtubules influences the synaptic plasticity of neural networks. By integrating the Orch-OR theory with modern deep learning architectures, we demonstrate that quantum-coherent states can theoretically accelerate learning rates in biological systems.</p>
-    <h2>1. Introduction</h2>
-    <p>The intersection of quantum mechanics and neuroscience has long been a subject of contentious debate. While the "warm, wet, and noisy" environment of the brain was thought to prohibit sustained quantum coherence, recent experimental evidence points to the contrary. <span class="bg-yellow-200 rounded px-1 cursor-pointer border-b-2 border-yellow-400">Specifically, the discovery of long-lived coherence in photosynthetic complexes</span> suggests biological systems have evolved mechanisms to protect quantum states.</p>
-    <p>Our research builds upon the foundational work of Penrose and Hameroff, extending it into the domain of computational neuroscience. We aim to bridge the gap between abstract quantum theories and empirically observable neural phenomena.</p>`,
-  },
-  {
-    id: "manuscript-2",
-    title: "Neural Plasticity and Memory Encoding",
-    content: `<h1>Neural Plasticity and Memory Encoding: A Systems Perspective</h1>
-    <p><strong>Dr. Ava Chen</strong> • Rahul Gupta • <strong>Dr. Samuel Ortiz</strong></p>
-    <h2>Abstract</h2>
-    <p>This manuscript examines synaptic plasticity mechanisms that shape long-term memory formation. We analyze spike-timing dependent plasticity across cortical regions and propose a consolidation model that unifies behavioral and electrophysiological findings.</p>
-    <h2>1. Introduction</h2>
-    <p>Memory encoding is driven by activity-dependent changes in synaptic efficacy. We review experimental evidence and describe a computational model that links hippocampal replay to cortical storage.</p>`,
-  },
-  {
-    id: "manuscript-3",
-    title: "Quantum Decoherence in Microtubules",
-    content: `<h1>Quantum Decoherence in Microtubules: Constraints on Biological Coherence</h1>
-    <p><strong>Dr. Julian Smith</strong> • <strong>Dr. Mei Wong</strong> • Rahul Gupta</p>
-    <h2>Abstract</h2>
-    <p>We evaluate competing decoherence timescales in microtubule structures and discuss implications for quantum-assisted cognition. Experimental constraints and model limitations are outlined.</p>
-    <h2>1. Introduction</h2>
-    <p>Decoherence in biological systems remains a critical bottleneck for quantum cognition theories. We survey thermal noise models and compare them to recent measurements.</p>`,
-  },
-]
+const createDefaultManuscriptContent = (title: string) => {
+  const safeTitle = title
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+  return `<h1>${safeTitle}</h1><p></p>`
+}
 
 export default function ChatPage() {
   const { user } = useAuth()
+  const params = useParams()
+  const router = useRouter()
+  const projectId = typeof params?.id === "string" ? params.id : ""
   const escapeHtml = (value: string) => {
     return value
       .replace(/&/g, "&amp;")
@@ -156,20 +140,37 @@ export default function ChatPage() {
     return `${documentContent}\n${html}`
   }
 
-  const manuscriptOptions = MANUSCRIPT_OPTIONS
-
-  const initialManuscripts = manuscriptOptions.reduce<Record<string, ManuscriptRecord>>((acc, item) => {
-    acc[item.id] = {
-      id: item.id,
-      title: item.title,
-      contentHtml: item.content,
-      updatedAt: new Date().toISOString(),
+  const createManuscript = async (title: string) => {
+    if (!projectId) return null
+    const response = await fetch("/api/manuscripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        title,
+      }),
+    })
+    const result = await response.json()
+    if (!response.ok) {
+      throw new Error(result?.error || "Failed to create manuscript.")
     }
-    return acc
-  }, {})
+    return {
+      id: result.data._id,
+      title: result.data.title,
+      contentHtml: result.data.contentHtml || createDefaultManuscriptContent(result.data.title),
+      updatedAt: result.data.updatedAt,
+      createdAt: result.data.createdAt,
+    } as ManuscriptRecord
+  }
 
-  const [activeManuscriptId, setActiveManuscriptId] = useState(manuscriptOptions[0].id)
-  const [manuscriptsState, setManuscriptsState] = useState<Record<string, ManuscriptRecord>>(initialManuscripts)
+  const [manuscripts, setManuscripts] = useState<ManuscriptRecord[]>([])
+  const [activeManuscriptId, setActiveManuscriptId] = useState<string>("")
+  const [manuscriptsLoading, setManuscriptsLoading] = useState(true)
+  const [manuscriptsError, setManuscriptsError] = useState<string | null>(null)
+  const [isCreateManuscriptOpen, setIsCreateManuscriptOpen] = useState(false)
+  const [newManuscriptTitle, setNewManuscriptTitle] = useState("")
+  const [isCreatingManuscript, setIsCreatingManuscript] = useState(false)
+  const [manuscriptActionError, setManuscriptActionError] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -203,6 +204,14 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("gemini-3-flash-preview")
   const [isOutlineExpanded, setIsOutlineExpanded] = useState(true)
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(true)
+  const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false)
+  const [collaboratorSearch, setCollaboratorSearch] = useState("")
+  const [projectUsers, setProjectUsers] = useState<string[]>([])
+  const [collaboratorSelections, setCollaboratorSelections] = useState<string[]>([])
+  const [usersOptions, setUsersOptions] = useState<UserOption[]>([])
+  const [collaboratorsLoading, setCollaboratorsLoading] = useState(false)
+  const [collaboratorsError, setCollaboratorsError] = useState<string | null>(null)
+  const [collaboratorsSaving, setCollaboratorsSaving] = useState(false)
 
   const aiModels = [
     { id: "gemini-3-flash-preview", name: "Gemini 1.5 Flash", description: "Google's fast, efficient research model" },
@@ -214,22 +223,30 @@ export default function ChatPage() {
     return aiModels.find((m) => m.id === modelId)?.name || "GPT-4 (Research)"
   }
 
+  const activeManuscript = useMemo(() => {
+    return manuscripts.find((item) => item.id === activeManuscriptId) || null
+  }, [manuscripts, activeManuscriptId])
+
   const modelStatus = isLoading ? "Analyzing request..." : "Idle"
   const chatStatusMessage = isLoading ? "Analyzing the script..." : ""
 
-  const [documentContent, setDocumentContent] = useState(manuscriptOptions[0].content)
+  const [documentContent, setDocumentContent] = useState("")
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewLines, setReviewLines] = useState<ReviewLine[]>([])
   const [pendingContent, setPendingContent] = useState<string | null>(null)
   const [previousContent, setPreviousContent] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [publishedId, setPublishedId] = useState<string | null>(null)
+  const [showPublishModal, setShowPublishModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   const editorRef = useRef<RichTextEditorRef>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isRestoringRef = useRef(false)
+  const lastAppliedManuscriptIdRef = useRef<string>("")
 
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
 
@@ -371,20 +388,63 @@ export default function ChatPage() {
     setPreviousContent(null)
   }
 
+  const handlePublish = async () => {
+    if (!projectId || !documentContent || !activeManuscriptId) return
+    try {
+      setIsPublishing(true)
+      const response = await fetch("/api/published", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          manuscriptId: activeManuscriptId,
+          title: activeManuscript?.title,
+          contentHtml: documentContent,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to publish document.")
+      }
+      if (result?.data?.id) {
+        setPublishedId(result.data.id)
+        setShowPublishModal(true)
+      }
+    } catch (error) {
+      console.error("Failed to publish document:", error)
+    } finally {
+      setIsPublishing(false)
+    }
+  }
+
+  const publishedLink = publishedId ? `/projects/${projectId}/published/${publishedId}` : ""
+
+  const handleCopyPublishedLink = async () => {
+    if (!publishedLink) return
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${publishedLink}`)
+    } catch (error) {
+      console.error("Failed to copy link:", error)
+    }
+  }
+
   const manuscriptsJson = useMemo(() => {
-    return Object.values(manuscriptsState).map((record) => ({
+    return manuscripts.map((record) => ({
       id: record.id,
       title: record.title,
       updatedAt: record.updatedAt,
       contentHtml: record.contentHtml,
-      timeline: outlineItems.map((item) => ({
-        id: item.id,
-        text: item.text,
-        level: item.level,
-        index: item.index,
-      })),
+      timeline:
+        record.id === activeManuscriptId
+          ? outlineItems.map((item) => ({
+              id: item.id,
+              text: item.text,
+              level: item.level,
+              index: item.index,
+            }))
+          : [],
     }))
-  }, [manuscriptsState, outlineItems])
+  }, [activeManuscriptId, manuscripts, outlineItems])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -395,14 +455,131 @@ export default function ChatPage() {
   }, [messages])
 
   useEffect(() => {
-    const current = manuscriptOptions.find((item) => item.id === activeManuscriptId)
-    if (current) {
-      const nextContent = manuscriptsState[current.id]?.contentHtml ?? current.content
-      setDocumentContent((prev) => (prev === nextContent ? prev : nextContent))
+    if (!projectId || !isCollaboratorsOpen) return
+
+    let isMounted = true
+
+    const loadCollaborators = async () => {
+      try {
+        setCollaboratorsLoading(true)
+        setCollaboratorsError(null)
+
+        const [usersResponse, projectResponse] = await Promise.all([
+          fetch("/api/users"),
+          fetch(`/api/projects/${encodeURIComponent(projectId)}`),
+        ])
+
+        const usersResult = await usersResponse.json()
+        const projectResult = await projectResponse.json()
+
+        if (!usersResponse.ok) {
+          throw new Error(usersResult?.message || usersResult?.error || "Failed to fetch users.")
+        }
+        if (!projectResponse.ok) {
+          throw new Error(projectResult?.message || projectResult?.error || "Failed to fetch project.")
+        }
+
+        if (!isMounted) return
+        const userOptions = Array.isArray(usersResult?.data) ? usersResult.data : []
+        const projectUserIds = Array.isArray(projectResult?.data?.users) ? projectResult.data.users : []
+        setUsersOptions(userOptions)
+        setProjectUsers(projectUserIds)
+        setCollaboratorSelections(projectUserIds)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load collaborators."
+        if (isMounted) {
+          setCollaboratorsError(message)
+        }
+      } finally {
+        if (isMounted) {
+          setCollaboratorsLoading(false)
+        }
+      }
     }
-  }, [activeManuscriptId, manuscriptsState])
+
+    loadCollaborators()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isCollaboratorsOpen, projectId])
 
   useEffect(() => {
+    if (!projectId) {
+      setManuscripts([])
+      setActiveManuscriptId("")
+      setManuscriptsLoading(false)
+      return
+    }
+
+    let isMounted = true
+
+    const loadManuscripts = async () => {
+      try {
+        setManuscriptsLoading(true)
+        setManuscriptsError(null)
+        const response = await fetch(`/api/manuscripts?projectId=${encodeURIComponent(projectId)}`)
+        const result = await response.json()
+        if (!response.ok) {
+          throw new Error(result?.error || "Failed to load manuscripts.")
+        }
+
+        let items = Array.isArray(result?.data)
+          ? result.data.map((manuscript: { _id: string; title: string; contentHtml?: string; updatedAt?: string; createdAt?: string }) => ({
+              id: manuscript._id,
+              title: manuscript.title,
+              contentHtml: manuscript.contentHtml || createDefaultManuscriptContent(manuscript.title),
+              updatedAt: manuscript.updatedAt || new Date().toISOString(),
+              createdAt: manuscript.createdAt,
+            }))
+          : []
+
+        if (items.length === 0) {
+          const created = await createManuscript("Manuscript 1")
+          if (created) {
+            items = [created]
+          }
+        }
+
+        if (!isMounted) return
+        setManuscripts(items)
+        setActiveManuscriptId((prev) => (items.some((item) => item.id === prev) ? prev : items[0]?.id || ""))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load manuscripts."
+        if (isMounted) {
+          setManuscriptsError(message)
+        }
+      } finally {
+        if (isMounted) {
+          setManuscriptsLoading(false)
+        }
+      }
+    }
+
+    loadManuscripts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (!activeManuscriptId) {
+      setDocumentContent("")
+      return
+    }
+    const current = manuscripts.find((item) => item.id === activeManuscriptId)
+    if (current) {
+      const nextContent = current.contentHtml || createDefaultManuscriptContent(current.title)
+      if (lastAppliedManuscriptIdRef.current !== activeManuscriptId) {
+        lastAppliedManuscriptIdRef.current = activeManuscriptId
+        setDocumentContent((prev) => (prev === nextContent ? prev : nextContent))
+      }
+    }
+  }, [activeManuscriptId, manuscripts])
+
+  useEffect(() => {
+    if (!activeManuscriptId) return
     const loadSession = async () => {
       try {
         isRestoringRef.current = true
@@ -446,6 +623,7 @@ export default function ChatPage() {
   }, [activeManuscriptId])
 
   useEffect(() => {
+    if (!activeManuscriptId) return
     const loadComments = async () => {
       try {
         const response = await fetch(`/api/comments?manuscriptId=${encodeURIComponent(activeManuscriptId)}`)
@@ -472,6 +650,7 @@ export default function ChatPage() {
   }, [activeManuscriptId])
 
   useEffect(() => {
+    if (!activeManuscriptId) return
     const parser = new DOMParser()
     const doc = parser.parseFromString(documentContent, "text/html")
     const headings = Array.from(doc.querySelectorAll("h1, h2, h3, h4"))
@@ -483,27 +662,33 @@ export default function ChatPage() {
         index,
       })),
     )
-  }, [documentContent])
 
-  useEffect(() => {
-    setManuscriptsState((prev) => {
-      const existing = prev[activeManuscriptId]
-      if (existing?.contentHtml === documentContent) {
-        return prev
-      }
-      return {
-        ...prev,
-        [activeManuscriptId]: {
-          id: activeManuscriptId,
-          title: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title || "Untitled",
-          contentHtml: documentContent,
+    const firstHeading = doc.querySelector("h1")?.textContent?.trim()
+    setManuscripts((prev) => {
+      let changed = false
+      const next = prev.map((manuscript) => {
+        if (manuscript.id !== activeManuscriptId) {
+          return manuscript
+        }
+        const nextTitle = firstHeading || manuscript.title
+        const nextContent = documentContent
+        if (manuscript.title === nextTitle && manuscript.contentHtml === nextContent) {
+          return manuscript
+        }
+        changed = true
+        return {
+          ...manuscript,
+          title: nextTitle,
+          contentHtml: nextContent,
           updatedAt: new Date().toISOString(),
-        },
-      }
+        }
+      })
+      return changed ? next : prev
     })
-  }, [activeManuscriptId, documentContent, manuscriptOptions])
+  }, [activeManuscriptId, documentContent])
 
   useEffect(() => {
+    if (!activeManuscriptId) return
     if (isRestoringRef.current) return
 
     if (saveTimeoutRef.current) {
@@ -513,31 +698,45 @@ export default function ChatPage() {
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         setSaveStatus("saving")
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: sessionId ?? undefined,
-            manuscriptId: activeManuscriptId,
-            manuscriptTitle: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title,
-            model: selectedModel,
-            messages: messages.map((message) => ({
-              type: message.type,
-              content: message.content,
-              timestamp: message.timestamp.toISOString(),
-            })),
-            generatedContent: documentContent,
-            timeline: outlineItems,
+        const [manuscriptResponse, chatResponse] = await Promise.all([
+          fetch(`/api/manuscripts/${encodeURIComponent(activeManuscriptId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: activeManuscript?.title || "Untitled",
+              contentHtml: documentContent,
+            }),
           }),
-        })
+          fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: sessionId ?? undefined,
+              manuscriptId: activeManuscriptId,
+              manuscriptTitle: activeManuscript?.title,
+              model: selectedModel,
+              messages: messages.map((message) => ({
+                type: message.type,
+                content: message.content,
+                timestamp: message.timestamp.toISOString(),
+              })),
+              generatedContent: documentContent,
+              timeline: outlineItems,
+            }),
+          }),
+        ])
 
-        const result = await response.json()
-        if (!response.ok) {
-          throw new Error(result?.error || "Failed to save.")
+        const manuscriptResult = await manuscriptResponse.json()
+        const chatResult = await chatResponse.json()
+        if (!manuscriptResponse.ok) {
+          throw new Error(manuscriptResult?.error || "Failed to save manuscript.")
+        }
+        if (!chatResponse.ok) {
+          throw new Error(chatResult?.error || "Failed to save.")
         }
 
-        if (result?.data?.id) {
-          setSessionId(result.data.id)
+        if (chatResult?.data?.id) {
+          setSessionId(chatResult.data.id)
         }
         setSaveStatus("saved")
       } catch (error) {
@@ -551,7 +750,7 @@ export default function ChatPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [activeManuscriptId, documentContent, messages, outlineItems, manuscriptOptions, selectedModel, sessionId])
+  }, [activeManuscript?.title, activeManuscriptId, documentContent, messages, outlineItems, selectedModel, sessionId])
 
   // Update active states for toolbar buttons when document content changes
   useEffect(() => {
@@ -563,7 +762,7 @@ export default function ChatPage() {
   }, [documentContent])
 
   const handleSend = async () => {
-    if (!input.trim()) return
+    if (!activeManuscriptId || !input.trim()) return
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -583,7 +782,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: input,
           documentContent,
-          manuscriptTitle: manuscriptOptions.find((item) => item.id === activeManuscriptId)?.title,
+          manuscriptTitle: activeManuscript?.title,
           model: selectedModel,
           manuscripts: manuscriptsJson,
         }),
@@ -656,29 +855,22 @@ export default function ChatPage() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  const collaborators: Collaborator[] = [
-    {
-      id: "1",
-      name: "Ava Chen",
-      avatar:
-        "https://lh3.googleusercontent.com/aida-public/AB6AXuDmE4XDiJDaZscaqQngU5bviYMhzLAI1BMes3fV6128hPR4r3AjbTyziWuPM8EQHVFyd-dqfmj7yxHoRL6PZ6pw0EnaHQClxxJnGvm_UjEjt9Y1We1m-DpKyBlnwIQcgfNBzHK_aD5b_7FGbh517gyltIIMVQyGgHhOJi1OuUe8M8GRD8aaqHHgbkV5Jd-__xMhNsG8fLYZ7WG2uqXuWNgujOsFdJxBkl6kzsVodVn5UeT1Cx23tilp-sYucYyMUMziFdGDk8kyoKtZ",
-      initials: "AC",
-      isEditing: true,
-    },
-    {
-      id: "2",
-      name: "Rahul Gupta",
-      avatar:
-        "https://lh3.googleusercontent.com/aida-public/AB6AXuCUNCwoS7Gavceo8S0QGnOkVL1GmE0td-bBJvOtSvF83Zg7lyXKtgwl3hXwEnx_RWFQJwPSRymKgTN1G9fxZ8bkCoMAji5lHzZ68uOlAAT6ADKx6M8L4SMVQld17zyE6AA8HwcJNPJF7LsI68PbKT7f52OiL-qjzSS6FJh6uSEJrswwoMrRdgQejK_F3c186_4osTdb3ISJkp6w2hesgpXUbCk1fkdnGhcr3swgPyYNggOopvUflOrGFy2LQBgzOs7nQa0SgTdHH-VA",
-      initials: "RG",
-      isEditing: false,
-    },
-  ]
+  const collaborators = useMemo<Collaborator[]>(() => {
+    return usersOptions
+      .filter((user) => projectUsers.includes(user.id))
+      .map((user) => ({
+        id: user.id,
+        name: user.name,
+        avatar: "/placeholder-user.jpg",
+        initials: getInitials(user.name),
+        isEditing: false,
+      }))
+  }, [projectUsers, usersOptions])
 
   const [comments, setComments] = useState<Comment[]>([])
 
   const handleAddComment = async () => {
-    if (!commentInput.trim()) return
+    if (!activeManuscriptId || !commentInput.trim()) return
 
     const author = user?.name || "You"
     const avatar = user?.name ? getInitials(user.name) : "JS"
@@ -720,13 +912,221 @@ export default function ChatPage() {
     }
   }
 
+  const filteredUsers = useMemo(() => {
+    const term = collaboratorSearch.trim().toLowerCase()
+    if (!term) return usersOptions
+    return usersOptions.filter(
+      (user) => user.name.toLowerCase().includes(term) || user.email.toLowerCase().includes(term),
+    )
+  }, [collaboratorSearch, usersOptions])
+
+  const toggleCollaborator = (userId: string) => {
+    if (user?.id && userId === user.id) {
+      return
+    }
+    setCollaboratorSelections((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    )
+  }
+
+  const handleSaveCollaborators = async () => {
+    if (!projectId) return
+    try {
+      setCollaboratorsSaving(true)
+      setCollaboratorsError(null)
+      const nextUsers = new Set(collaboratorSelections)
+      if (user?.id) {
+        nextUsers.add(user.id)
+      }
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          users: Array.from(nextUsers),
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || "Failed to update collaborators.")
+      }
+      const updatedUsers = Array.isArray(result?.data?.users) ? result.data.users : Array.from(nextUsers)
+      setProjectUsers(updatedUsers)
+      setCollaboratorSelections(updatedUsers)
+      setIsCollaboratorsOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update collaborators."
+      setCollaboratorsError(message)
+    } finally {
+      setCollaboratorsSaving(false)
+    }
+  }
+
+  const handleCreateManuscript = async () => {
+    if (!projectId) return
+    const fallbackTitle = `Manuscript ${manuscripts.length + 1}`
+    const title = newManuscriptTitle.trim() || fallbackTitle
+
+    try {
+      setIsCreatingManuscript(true)
+      setManuscriptActionError(null)
+      const created = await createManuscript(title)
+      if (!created) {
+        throw new Error("Failed to create manuscript.")
+      }
+      setManuscripts((prev) => [...prev, created])
+      setActiveManuscriptId(created.id)
+      setDocumentContent(created.contentHtml || createDefaultManuscriptContent(created.title))
+      setIsCreateManuscriptOpen(false)
+      setNewManuscriptTitle("")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create manuscript."
+      setManuscriptActionError(message)
+    } finally {
+      setIsCreatingManuscript(false)
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen">
+      <Dialog open={showPublishModal} onOpenChange={setShowPublishModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Shareable link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-[#6B7280]">Your manuscript is published. Copy and share the link below.</div>
+            <div className="rounded-md border border-[#E5E0D4] bg-white px-3 py-2 text-xs break-all">
+              {publishedLink ? `${publishedLink}` : "No link available"}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={handleCopyPublishedLink} disabled={!publishedLink}>
+                Copy link
+              </Button>
+              <Button
+                onClick={() => publishedLink && router.push(publishedLink)}
+                disabled={!publishedLink}
+                className="bg-[#1DA619] text-white hover:bg-[#158514]"
+              >
+                View page
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isCreateManuscriptOpen}
+        onOpenChange={(open) => {
+          setIsCreateManuscriptOpen(open)
+          if (!open) {
+            setNewManuscriptTitle("")
+            setManuscriptActionError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New manuscript</DialogTitle>
+            <DialogDescription>Create a manuscript under this project.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-[#6B7280]">Title</label>
+            <Input
+              value={newManuscriptTitle}
+              onChange={(event) => setNewManuscriptTitle(event.target.value)}
+              placeholder={`Manuscript ${manuscripts.length + 1}`}
+            />
+            {manuscriptActionError && <p className="text-xs text-red-500">{manuscriptActionError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateManuscriptOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateManuscript}
+              disabled={isCreatingManuscript || manuscriptsLoading}
+              className="bg-[#1DA619] text-white hover:bg-[#158514]"
+            >
+              {isCreatingManuscript ? "Creating..." : "Create manuscript"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isCollaboratorsOpen}
+        onOpenChange={(open) => {
+          setIsCollaboratorsOpen(open)
+          if (!open) {
+            setCollaboratorSearch("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Collaborators</DialogTitle>
+            <DialogDescription>Select collaborators for this project.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={collaboratorSearch}
+              onChange={(event) => setCollaboratorSearch(event.target.value)}
+              placeholder="Search users by name or email"
+            />
+            {collaboratorsError && <p className="text-xs text-red-500">{collaboratorsError}</p>}
+            <div className="max-h-64 overflow-y-auto rounded-md border border-[#E5E0D4] bg-white">
+              {collaboratorsLoading ? (
+                <div className="px-3 py-2 text-xs text-[#6B7280]">Loading users...</div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-[#6B7280]">No users found.</div>
+              ) : (
+                filteredUsers.map((userOption) => {
+                  const isCurrentUser = user?.id === userOption.id
+                  const isChecked = collaboratorSelections.includes(userOption.id) || isCurrentUser
+                  return (
+                    <label
+                      key={userOption.id}
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-[#1F2937] hover:bg-gray-50 cursor-pointer"
+                    >
+                      <Checkbox checked={isChecked} onCheckedChange={() => toggleCollaborator(userOption.id)} disabled={isCurrentUser} />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{userOption.name}</span>
+                        <span className="text-xs text-[#6B7280]">{userOption.email}</span>
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCollaboratorsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCollaborators}
+              disabled={collaboratorsSaving || collaboratorsLoading}
+              className="bg-[#1DA619] text-white hover:bg-[#158514]"
+            >
+              {collaboratorsSaving ? "Saving..." : "Save collaborators"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ChatHeader
-        manuscripts={manuscriptOptions.map(({ id, title }) => ({ id, title }))}
+        manuscripts={manuscripts.map(({ id, title }) => ({ id, title }))}
         activeManuscriptId={activeManuscriptId}
         onManuscriptChange={setActiveManuscriptId}
+        onCreateManuscript={() => {
+          setManuscriptActionError(null)
+          setNewManuscriptTitle("")
+          setIsCreateManuscriptOpen(true)
+        }}
+        isCreateDisabled={manuscriptsLoading || !projectId}
       />
+      {manuscriptsError && (
+        <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-600">
+          {manuscriptsError}
+        </div>
+      )}
       <div className="flex h-full bg-[#F5F1E6] overflow-hidden">
         {/* Mobile Overlay */}
         {(leftSidebarOpen || rightSidebarOpen) && (
@@ -982,9 +1382,9 @@ export default function ChatPage() {
                 {saveStatus === "error" && "Save failed"}
                 {saveStatus === "idle" && "Not saved"}
               </span>
-              <Button variant="outline">
+              <Button variant="outline" disabled={isReviewing || isPublishing} onClick={handlePublish}>
                 <Send className="h-4 w-4" />
-                Publish
+                {isPublishing ? "Publishing..." : "Publish"}
               </Button>
             </div>
           </div>
@@ -1064,21 +1464,26 @@ export default function ChatPage() {
         >
           {/* Collaborators Section */}
           <div className="p-4 border-b border-[#E5E0D4]">
-            <a className="block text-xs font-semibold text-[#F26419] hover:text-orange-600 uppercase tracking-wider mb-3 cursor-pointer hover:underline">
+            <button
+              onClick={() => setIsCollaboratorsOpen(true)}
+              className="block text-xs font-semibold text-[#F26419] hover:text-orange-600 uppercase tracking-wider mb-3 cursor-pointer hover:underline"
+            >
               Collaborators
-            </a>
+            </button>
             <div className="flex -space-x-2 overflow-hidden mb-3">
-              {collaborators.map((collab) => (
-                <img
-                  key={collab.id}
-                  alt={collab.name}
-                  className="inline-block h-8 w-8 rounded-full ring-2 ring-white object-cover"
-                  src={collab.avatar}
-                />
-              ))}
-              <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-medium text-[#6B7280]">
-                +2
-              </div>
+              {collaborators.length === 0 ? (
+                <div className="text-xs text-[#6B7280]">No collaborators yet.</div>
+              ) : (
+                collaborators.map((collab) => (
+                  <div
+                    key={collab.id}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full ring-2 ring-white bg-gray-200 text-xs font-medium text-[#6B7280]"
+                    title={collab.name}
+                  >
+                    {collab.initials}
+                  </div>
+                ))
+              )}
             </div>
             <div className="flex items-center justify-between text-xs">
               {collaborators

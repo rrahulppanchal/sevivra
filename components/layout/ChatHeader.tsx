@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, Search, Bell, User, Home, FileText, MessageCircle, Zap, Settings, LogOut, ChevronDown, Mail, CheckCircle, AlertCircle, Info } from "lucide-react"
+import { Menu, Search, Bell, User, Home, FileText, MessageCircle, Zap, Settings, LogOut, ChevronDown, Mail, CheckCircle, AlertCircle, Info, Plus } from "lucide-react"
 import { useLayout } from "./layout-provider"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
@@ -68,9 +68,11 @@ interface ChatHeaderProps {
   manuscripts: ManuscriptOption[]
   activeManuscriptId: string
   onManuscriptChange: (id: string) => void
+  onCreateManuscript?: () => void
+  isCreateDisabled?: boolean
 }
 
-export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange }: ChatHeaderProps) {
+export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange, onCreateManuscript, isCreateDisabled }: ChatHeaderProps) {
   const { sidebarOpen, setSidebarOpen } = useLayout()
   const { user, logout } = useAuth()
   const unreadCount = notifications.length
@@ -126,6 +128,17 @@ export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {onCreateManuscript && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden sm:inline-flex"
+              onClick={onCreateManuscript}
+              disabled={isCreateDisabled}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         {/* Right side - Search, Notifications, and Profile */}
