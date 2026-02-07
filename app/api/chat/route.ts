@@ -173,15 +173,18 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const manuscriptId = searchParams.get("manuscriptId")?.trim()
+    const sessionId = searchParams.get("sessionId")?.trim()
 
-    if (!manuscriptId) {
-      return NextResponse.json({ error: "manuscriptId is required." }, { status: 400 })
+    if (!manuscriptId && !sessionId) {
+      return NextResponse.json({ error: "manuscriptId or sessionId is required." }, { status: 400 })
     }
 
-    const session = await ChatSession.findOne({ manuscriptId })
-      .sort({ updatedAt: -1 })
-      .select("-__v")
-      .lean()
+    const session = sessionId
+      ? await ChatSession.findById(sessionId).select("-__v").lean()
+      : await ChatSession.findOne({ manuscriptId })
+          .sort({ updatedAt: -1 })
+          .select("-__v")
+          .lean()
 
     if (!session) {
       return NextResponse.json({ success: true, data: null }, { status: 200 })

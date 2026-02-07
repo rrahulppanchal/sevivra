@@ -43,9 +43,22 @@ export async function POST(request: Request) {
     const documentContent = typeof body?.documentContent === "string" ? body.documentContent : ""
     const manuscriptTitle = typeof body?.manuscriptTitle === "string" ? body.manuscriptTitle : undefined
     const requestedModel = typeof body?.model === "string" ? body.model : "gemini-1.5-pro"
+    const imageData = typeof body?.imageData === "string" ? body.imageData : undefined
+    const imageMimeType = typeof body?.imageMimeType === "string" ? body.imageMimeType : undefined
 
-    if (!message.trim()) {
-      return NextResponse.json({ error: "Message is required." }, { status: 400 })
+    if (!message.trim() && !imageData) {
+      return NextResponse.json({ error: "Message or image is required." }, { status: 400 })
+    }
+
+    if (imageData) {
+      try {
+        const bytes = Buffer.from(imageData, "base64").length
+        if (bytes > 2 * 1024 * 1024) {
+          return NextResponse.json({ error: "Image exceeds 2MB limit." }, { status: 400 })
+        }
+      } catch {
+        return NextResponse.json({ error: "Invalid image data." }, { status: 400 })
+      }
     }
 
     const allowedModels = new Set([
@@ -59,11 +72,27 @@ export async function POST(request: Request) {
     ])
     const model = allowedModels.has(requestedModel) ? requestedModel : "gemini-1.5-pro"
 
+    const promptMessage = message.trim()
+      ? message
+      : "Analyze the attached image and respond to the request."
+
     const payload = {
       contents: [
         {
           role: "user",
-          parts: [{ text: buildPrompt(message, documentContent, manuscriptTitle) }],
+          parts: [
+            { text: buildPrompt(promptMessage, documentContent, manuscriptTitle) },
+            ...(imageData
+              ? [
+                  {
+                    inlineData: {
+                      mimeType: imageMimeType || "image/png",
+                      data: imageData,
+                    },
+                  },
+                ]
+              : []),
+          ],
         },
       ],
       generationConfig: {

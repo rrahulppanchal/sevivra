@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react"
 import type { ElementType } from "react"
-import { Send, Plus, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
+import { Send, Plus, List, Image as ImageIcon, X, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -28,6 +28,7 @@ interface ChatMessage {
   type: "user" | "ai"
   content: string
   timestamp: Date
+  imageDataUrl?: string
 }
 
 interface ManuscriptRecord {
@@ -66,6 +67,13 @@ interface Comment {
   avatar: string
   createdAt: string
   isHighlighted?: boolean
+}
+
+interface ChatSessionSummary {
+  _id: string
+  createdAt?: string
+  updatedAt?: string
+  messages?: { type: "user" | "ai"; content: string }[]
 }
 
 interface HtmlBlock {
@@ -195,6 +203,9 @@ export default function ChatPage() {
 
   const [input, setInput] = useState("")
   const [commentInput, setCommentInput] = useState("")
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imagePayload, setImagePayload] = useState<{ data: string; mimeType: string } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
@@ -237,11 +248,13 @@ export default function ChatPage() {
   const [previousContent, setPreviousContent] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishedId, setPublishedId] = useState<string | null>(null)
   const [showPublishModal, setShowPublishModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<RichTextEditorRef>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -249,6 +262,10 @@ export default function ChatPage() {
   const lastAppliedManuscriptIdRef = useRef<string>("")
 
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
+  const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([])
+  const [chatSessionsLoading, setChatSessionsLoading] = useState(false)
+  const [chatSessionsError, setChatSessionsError] = useState<string | null>(null)
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false)
 
   const getInitials = (name: string) => {
     return name
@@ -388,33 +405,9 @@ export default function ChatPage() {
     setPreviousContent(null)
   }
 
-  const handlePublish = async () => {
-    if (!projectId || !documentContent || !activeManuscriptId) return
-    try {
-      setIsPublishing(true)
-      const response = await fetch("/api/published", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          manuscriptId: activeManuscriptId,
-          title: activeManuscript?.title,
-          contentHtml: documentContent,
-        }),
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to publish document.")
-      }
-      if (result?.data?.id) {
-        setPublishedId(result.data.id)
-        setShowPublishModal(true)
-      }
-    } catch (error) {
-      console.error("Failed to publish document:", error)
-    } finally {
-      setIsPublishing(false)
-    }
+  const handlePublish = () => {
+    if (!projectId || !activeManuscriptId) return
+    router.push(`/projects/${projectId}/publish?manuscriptId=${encodeURIComponent(activeManuscriptId)}`)
   }
 
   const publishedLink = publishedId ? `/projects/${projectId}/published/${publishedId}` : ""
@@ -453,6 +446,24 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  const loadChatSessions = async (targetManuscriptId: string) => {
+    try {
+      setChatSessionsLoading(true)
+      setChatSessionsError(null)
+      const response = await fetch(`/api/chat/sessions?manuscriptId=${encodeURIComponent(targetManuscriptId)}`)
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to load chat sessions.")
+      }
+      setChatSessions(Array.isArray(result?.data) ? result.data : [])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load chat sessions."
+      setChatSessionsError(message)
+    } finally {
+      setChatSessionsLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!projectId || !isCollaboratorsOpen) return
@@ -524,7 +535,7 @@ export default function ChatPage() {
           throw new Error(result?.error || "Failed to load manuscripts.")
         }
 
-        let items = Array.isArray(result?.data)
+        let items: ManuscriptRecord[] = Array.isArray(result?.data)
           ? result.data.map((manuscript: { _id: string; title: string; contentHtml?: string; updatedAt?: string; createdAt?: string }) => ({
               id: manuscript._id,
               title: manuscript.title,
@@ -564,6 +575,14 @@ export default function ChatPage() {
   }, [projectId])
 
   useEffect(() => {
+    setSelectedSessionId(null)
+    setSessionId(null)
+    if (activeManuscriptId) {
+      loadChatSessions(activeManuscriptId)
+    }
+  }, [activeManuscriptId])
+
+  useEffect(() => {
     if (!activeManuscriptId) {
       setDocumentContent("")
       return
@@ -579,13 +598,12 @@ export default function ChatPage() {
   }, [activeManuscriptId, manuscripts])
 
   useEffect(() => {
-    if (!activeManuscriptId) return
+    if (!activeManuscriptId || !selectedSessionId) return
     const loadSession = async () => {
       try {
         isRestoringRef.current = true
-        const response = await fetch(`/api/chat?manuscriptId=${encodeURIComponent(activeManuscriptId)}`)
+        const response = await fetch(`/api/chat?sessionId=${encodeURIComponent(selectedSessionId)}`)
         const result = await response.json()
-
         if (!response.ok) {
           throw new Error(result?.error || "Failed to load saved session.")
         }
@@ -607,9 +625,6 @@ export default function ChatPage() {
             setOutlineItems(result.data.timeline)
           }
           setSaveStatus("saved")
-        } else {
-          setSessionId(null)
-          setSaveStatus("idle")
         }
       } catch (error) {
         setSaveStatus("error")
@@ -620,7 +635,7 @@ export default function ChatPage() {
     }
 
     loadSession()
-  }, [activeManuscriptId])
+  }, [activeManuscriptId, selectedSessionId])
 
   useEffect(() => {
     if (!activeManuscriptId) return
@@ -737,6 +752,8 @@ export default function ChatPage() {
 
         if (chatResult?.data?.id) {
           setSessionId(chatResult.data.id)
+          setSelectedSessionId(chatResult.data.id)
+          loadChatSessions(activeManuscriptId)
         }
         setSaveStatus("saved")
       } catch (error) {
@@ -762,17 +779,21 @@ export default function ChatPage() {
   }, [documentContent])
 
   const handleSend = async () => {
-    if (!activeManuscriptId || !input.trim()) return
+    if (!activeManuscriptId || (!input.trim() && !imagePayload)) return
 
+    const trimmedInput = input.trim()
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
-      content: input,
+      content: trimmedInput || (imagePayload ? "Image attached." : ""),
       timestamp: new Date(),
+      imageDataUrl: imagePreview || undefined,
     }
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
+    const payloadImage = imagePayload
+    clearImage()
     setIsLoading(true)
 
     try {
@@ -780,11 +801,13 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: input,
+          message: trimmedInput,
           documentContent,
           manuscriptTitle: activeManuscript?.title,
           model: selectedModel,
           manuscripts: manuscriptsJson,
+          imageData: payloadImage?.data,
+          imageMimeType: payloadImage?.mimeType,
         }),
       })
 
@@ -986,6 +1009,70 @@ export default function ChatPage() {
     }
   }
 
+  const handleNewChat = () => {
+    setSelectedSessionId(null)
+    setSessionId(null)
+    setMessages([])
+    setSaveStatus("idle")
+    setInput("")
+    setIsLoading(false)
+    setShowHistoryDropdown(false)
+    setImagePreview(null)
+    setImagePayload(null)
+    setImageError(null)
+  }
+
+  const handleSelectChatSession = (id: string) => {
+    setSelectedSessionId(id)
+    setShowHistoryDropdown(false)
+    setImagePreview(null)
+    setImagePayload(null)
+    setImageError(null)
+  }
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 2 * 1024 * 1024) {
+      setImageError("Image must be 2MB or меньше.")
+      event.target.value = ""
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : ""
+      if (!result.startsWith("data:")) {
+        setImageError("Invalid image format.")
+        return
+      }
+      const [header, base64] = result.split(",")
+      const mimeMatch = header.match(/data:(.*?);base64/)
+      const mimeType = mimeMatch?.[1] || file.type || "image/png"
+      if (!base64) {
+        setImageError("Failed to read image.")
+        return
+      }
+      setImagePreview(result)
+      setImagePayload({ data: base64, mimeType })
+      setImageError(null)
+    }
+    reader.onerror = () => {
+      setImageError("Failed to read image.")
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const clearImage = () => {
+    setImagePreview(null)
+    setImagePayload(null)
+    setImageError(null)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ""
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen">
       <Dialog open={showPublishModal} onOpenChange={setShowPublishModal}>
@@ -1147,15 +1234,60 @@ export default function ChatPage() {
           )}
         >
           {/* Sidebar Header */}
-          <div className="h-13 px-4 border-b border-[#E5E0D4] flex justify-between items-center">
+          <div className="h-13 px-4 border-b border-[#E5E0D4] flex justify-between items-center relative">
             <h2 className="font-semibold text-sm uppercase tracking-wider text-[#6B7280]">
               AI Research Assistant
             </h2>
-            <button className="text-[#6B7280] hover:text-[#1DA619] transition-colors">
-              <Plus className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowHistoryDropdown((prev) => !prev)}
+                className="text-[#6B7280] hover:text-[#1DA619] transition-colors"
+              >
+                <List className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleNewChat}
+                className="text-[#6B7280] hover:text-[#1DA619] transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+            {showHistoryDropdown && (
+              <div className="absolute right-4 top-12 z-20 w-72 rounded-lg border border-[#E5E0D4] bg-white shadow-md">
+                <div className="px-3 py-2 border-b border-[#E5E0D4] text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
+                  Chat History
+                </div>
+                <div className="max-h-64 overflow-y-auto p-2">
+                  {chatSessionsLoading && <div className="text-xs text-[#9CA3AF] px-2 py-1.5">Loading...</div>}
+                  {chatSessionsError && <div className="text-xs text-red-500 px-2 py-1.5">{chatSessionsError}</div>}
+                  {!chatSessionsLoading && chatSessions.length === 0 && (
+                    <div className="text-xs text-[#9CA3AF] px-2 py-1.5">No chats yet.</div>
+                  )}
+                  {chatSessions.map((session) => {
+                    const lastMessage = session.messages?.[session.messages.length - 1]?.content || "New chat"
+                    const isActive = session._id === selectedSessionId
+                    return (
+                      <button
+                        key={session._id}
+                        onClick={() => handleSelectChatSession(session._id)}
+                        className={cn(
+                          "w-full text-left text-xs rounded-md border px-2 py-1.5 mb-1 transition-colors",
+                          isActive
+                            ? "border-[#1DA619] bg-[#1DA619]/10 text-[#1F2937]"
+                            : "border-[#E5E0D4] text-[#6B7280] hover:bg-gray-50",
+                        )}
+                      >
+                        <div className="line-clamp-2">{lastMessage}</div>
+                        {session.updatedAt && (
+                          <div className="mt-1 text-[10px] text-[#9CA3AF]">{formatRelativeTime(session.updatedAt)}</div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
             {messages.map((message) => (
@@ -1188,6 +1320,15 @@ export default function ChatPage() {
                       : "bg-[#1DA619] text-white rounded-tr-none"
                   )}
                 >
+                  {message.imageDataUrl && (
+                    <div className="mb-2">
+                      <img
+                        src={message.imageDataUrl}
+                        alt="Uploaded"
+                        className="max-h-32 rounded-lg border border-white/20"
+                      />
+                    </div>
+                  )}
                   <div
                     className="whitespace-pre-wrap"
                     dangerouslySetInnerHTML={{ __html: formatChatContentAsHtml(message.content) }}
@@ -1218,7 +1359,35 @@ export default function ChatPage() {
 
           {/* Chat Input */}
           <div className="p-4 border-t border-[#E5E0D4] bg-white">
-            <div className="relative">
+            <div className="relative rounded-2xl border border-[#E5E0D4] bg-[#F5F1E6] p-3 shadow-sm">
+              {imagePreview && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-[#E5E0D4] bg-white p-2">
+                  <img src={imagePreview} alt="Preview" className="h-14 w-14 rounded-lg object-cover" />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-[#1F2937]">Image attached</div>
+                    <div className="text-[10px] text-[#6B7280]">Ready to send</div>
+                  </div>
+                  <button onClick={clearImage} className="text-[#6B7280] hover:text-[#F26419]">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              {imageError && <div className="mb-2 text-xs text-red-500">{imageError}</div>}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="absolute bottom-3 right-14 h-9 w-9 flex items-center justify-center rounded-full border border-gray-200 bg-white text-[#6B7280] hover:text-[#1DA619] transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={isLoading}
+                title="Upload image"
+              >
+                <ImageIcon className="h-4 w-4" />
+              </button>
               <textarea
                 ref={chatInputRef}
                 value={input}
@@ -1226,46 +1395,48 @@ export default function ChatPage() {
                 onKeyPress={handleKeyPress}
                 disabled={isLoading}
                 placeholder="Ask anything about your research..."
-                className="w-full bg-[#F5F1E6] border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#1DA619] focus:border-transparent outline-none resize-none h-24 text-[#1F2937] placeholder-[#6B7280] disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full bg-transparent border-none p-0 text-sm focus:ring-0 focus:border-transparent outline-none resize-none h-24 text-[#1F2937] placeholder-[#6B7280] disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleSend}
                 disabled={isLoading}
-                className="absolute bottom-3 right-3 p-1.5 bg-[#1DA619] text-white rounded-lg hover:bg-green-600 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                className="absolute bottom-3 right-3 h-9 w-9 flex items-center justify-center bg-[#1DA619] text-white rounded-full hover:bg-green-600 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="h-4 w-4" />
               </button>
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium text-[#6B7280] bg-white">
-                    <span className="text-[#F26419]">🤖</span>
-                    <span>{getModelName(selectedModel)}</span>
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuLabel>AI Model</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuRadioGroup value={selectedModel} onValueChange={setSelectedModel}>
-                    {aiModels.map((model) => (
-                      <DropdownMenuRadioItem key={model.id} value={model.id} className="flex flex-col items-start gap-0.5 py-2">
-                        <span className="font-medium text-sm">{model.name}</span>
-                        <span className="text-xs text-[#6B7280]">{model.description}</span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <div className="flex items-center gap-2 text-[10px] text-[#6B7280]">
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    isLoading ? "bg-[#F26419] animate-pulse" : "bg-[#1DA619]",
-                  )}
-                />
-                <span className={cn(isLoading && "text-[#F26419]")}>{modelStatus}</span>
+              <div className="flex items-center gap-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium text-[#1F2937] bg-white shadow-sm">
+                      <span className="text-[#F26419]">🤖</span>
+                      <span>{getModelName(selectedModel)}</span>
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuLabel>AI Model</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioGroup value={selectedModel} onValueChange={setSelectedModel}>
+                      {aiModels.map((model) => (
+                        <DropdownMenuRadioItem key={model.id} value={model.id} className="flex flex-col items-start gap-0.5 py-2">
+                          <span className="font-medium text-sm">{model.name}</span>
+                          <span className="text-xs text-[#6B7280]">{model.description}</span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {/* <div className="flex items-center gap-2 text-[10px] text-[#6B7280]">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      isLoading ? "bg-[#F26419] animate-pulse" : "bg-[#1DA619]",
+                    )}
+                  />
+                  <span className={cn(isLoading && "text-[#F26419]")}>{modelStatus}</span>
+                </div> */}
               </div>
             </div>
           </div>
@@ -1465,7 +1636,7 @@ export default function ChatPage() {
           {/* Collaborators Section */}
           <div className="p-4 border-b border-[#E5E0D4]">
             <button
-              onClick={() => setIsCollaboratorsOpen(true)}
+              onClick={() => projectId && router.push(`/projects/${projectId}/collaborators`)}
               className="block text-xs font-semibold text-[#F26419] hover:text-orange-600 uppercase tracking-wider mb-3 cursor-pointer hover:underline"
             >
               Collaborators

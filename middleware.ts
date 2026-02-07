@@ -6,12 +6,16 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/auth/signin', '/auth/signup', '/', '/api/auth/login', '/api/auth/register']
+  const publicRoutes = ['/auth/signin', '/auth/signup', '/landing', '/api/auth/login', '/api/auth/register']
   const isPublicRoute = publicRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
   // If accessing a public route, allow it
   if (isPublicRoute) {
     return NextResponse.next()
+  }
+
+  if (!token && request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/landing', request.url))
   }
 
   // If no token and trying to access protected route, redirect to signin
@@ -38,9 +42,12 @@ export function middleware(request: NextRequest) {
     })
   } catch (error) {
     // Invalid token, redirect to signin
-    const signInUrl = new URL('/auth/signin', request.url)
-    signInUrl.searchParams.set('redirect', request.nextUrl.pathname)
-    const response = NextResponse.redirect(signInUrl)
+    const isHome = request.nextUrl.pathname === '/'
+    const redirectUrl = new URL(isHome ? '/landing' : '/auth/signin', request.url)
+    if (!isHome) {
+      redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    }
+    const response = NextResponse.redirect(redirectUrl)
     response.cookies.delete('token')
     return response
   }

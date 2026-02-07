@@ -8,6 +8,7 @@ import Link from "next/link"
 import { Header } from "@/components/layout/header"
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
+import { useRouter } from "next/navigation"
 
 interface Project {
   _id: string
@@ -45,7 +46,8 @@ interface SuggestedProject {
 }
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+  const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [projectsError, setProjectsError] = useState<string | null>(null)
@@ -128,6 +130,10 @@ export default function HomePage() {
   ]
 
   useEffect(() => {
+    if (!user) {
+      return
+    }
+
     const fetchProjects = async () => {
       try {
         setProjectsLoading(true)
@@ -147,7 +153,13 @@ export default function HomePage() {
     }
 
     fetchProjects()
-  }, [])
+  }, [user])
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/landing")
+    }
+  }, [loading, router, user])
 
   const topProjects = useMemo(() => projects.slice(0, 3), [projects])
 
@@ -160,6 +172,10 @@ export default function HomePage() {
       return "Unknown"
     }
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  }
+
+  if (loading || !user) {
+    return null
   }
 
   return (
