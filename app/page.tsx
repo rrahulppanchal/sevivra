@@ -326,19 +326,31 @@ export default function HomePage() {
 
           {/* Explore Projects Section */}
           <div>
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-[#F26419]" />
-              <Link href="#" className="text-lg font-semibold text-[#F26419] hover:text-orange-600 transition-colors">
+              <Link href="/explore" className="text-lg font-semibold text-[#F26419] hover:text-orange-600 transition-colors">
                 Explore Projects
               </Link>
               <span className="text-xs bg-[#1DA619]/10 text-[#1DA619] px-2 py-0.5 rounded ml-2 font-medium">
                 Suggested by Gemini
               </span>
+              </div>
+              <Link href="/explore">
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="text-[#F26419] cursor-pointer"
+                >
+                  View All
+                </Button>
+              </Link>
             </div>
             <div className="flex flex-col gap-4">
               {suggestedProjects.map((project) => (
-                <div
+                <Link
                   key={project.id}
+                  href="/explore"
                   className="bg-white dark:bg-[#262626] p-4 rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] hover:shadow-md transition-shadow cursor-pointer flex flex-col sm:flex-row gap-5 items-start"
                 >
                   <div className="flex-1 min-w-0">
@@ -357,7 +369,7 @@ export default function HomePage() {
                       ))}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

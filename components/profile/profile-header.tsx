@@ -1,12 +1,17 @@
 "use client"
 
 import { CheckCircle2, Building2, Plus, Edit, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { useState } from "react"
-import { cn } from "@/lib/utils"
 
-export function ProfileHeader() {
+interface ProfileHeaderProps {
+  name?: string | null
+  institution?: string | null
+}
+
+export function ProfileHeader({ name, institution }: ProfileHeaderProps) {
   const [keywords, setKeywords] = useState(["AGI", "Neural Networks", "Machine Learning", "Quantum Biology"])
+  const displayName = name?.trim() || "Researcher"
+  const displayInstitution = institution?.trim() || "Institution not specified"
 
   const addKeyword = () => {
     const newKeyword = prompt("Enter a new keyword:")
@@ -24,7 +29,7 @@ export function ProfileHeader() {
       {/* Name and Verification */}
       <div className="flex items-center gap-3 group relative w-fit">
         <h1 className="text-4xl md:text-5xl font-serif font-bold bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent pr-2">
-          Dr. Julian Smith
+          {displayName}
         </h1>
         <div title="Verified Researcher">
           <CheckCircle2 className="h-8 w-8 text-[#1DA619] flex-shrink-0" />
@@ -78,7 +83,7 @@ export function ProfileHeader() {
       {/* Affiliation */}
       <div className="flex items-center gap-2 text-[#1F2937] dark:text-[#E5E7EB] font-medium text-sm pt-2 group w-fit">
         <Building2 className="h-5 w-5 text-[#6B7280] dark:text-[#9CA3AF]" />
-        <span>Verified - Stanford University</span>
+        <span>Verified - {displayInstitution}</span>
       </div>
     </div>
   )

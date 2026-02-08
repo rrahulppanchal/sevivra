@@ -4,7 +4,11 @@ import { Share2, GraduationCap, FlaskConical, Link as LinkIcon, Camera, Edit } f
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-export function ProfileSidebar() {
+interface ProfileSidebarProps {
+  name?: string | null
+}
+
+export function ProfileSidebar({ name }: ProfileSidebarProps) {
   const externalLinks = [
     {
       label: "Google Scholar",
@@ -28,13 +32,20 @@ export function ProfileSidebar() {
       textColor: "text-[#1F2937] dark:text-[#E5E7EB]",
     },
   ]
+  const initials =
+    name
+      ?.split(" ")
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase())
+      .join("")
+      .slice(0, 2) || "NA"
 
   return (
     <div className="flex flex-col items-center lg:items-start gap-6">
       {/* Profile Avatar */}
       <div className="h-32 w-32 md:h-40 md:w-40 rounded-full p-1 bg-gradient-to-br from-[#1DA619] to-[#F26419] mb-2 relative group cursor-pointer">
         <div className="h-full w-full rounded-full border-4 border-white dark:border-[#262626] bg-gradient-to-br from-[#1DA619] to-[#F26419] flex items-center justify-center text-white text-4xl md:text-5xl font-bold group-hover:opacity-90 transition-opacity">
-          JS
+          {initials}
         </div>
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
           <Camera className="h-8 w-8 text-white drop-shadow-md" />

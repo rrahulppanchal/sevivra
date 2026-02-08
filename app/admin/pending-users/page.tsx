@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -107,89 +108,92 @@ export default function PendingUsersPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Pending User Approvals</h1>
-        <p className="text-muted-foreground">
-          Review and approve user registration requests
-        </p>
-      </div>
-
-      {pendingUsers.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-lg">No pending users</p>
-            <p className="text-muted-foreground text-sm mt-2">
-              All registration requests have been processed
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {pendingUsers.map((pendingUser) => (
-            <Card key={pendingUser.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <CardTitle className="text-xl">{pendingUser.name}</CardTitle>
-                      <Badge className={getRoleBadgeColor(pendingUser.role)}>
-                        {pendingUser.role.charAt(0).toUpperCase() + pendingUser.role.slice(1)}
-                      </Badge>
-                    </div>
-                    <CardDescription className="flex flex-col gap-2 mt-2">
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        <span>{pendingUser.email}</span>
-                      </div>
-                      {pendingUser.institution && (
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          <span>{pendingUser.institution}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-xs">
-                        <span>Registered: {new Date(pendingUser.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleApprove(pendingUser.id, true)}
-                      disabled={approving === pendingUser.id}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      {approving === pendingUser.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Approve
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => handleApprove(pendingUser.id, false)}
-                      disabled={approving === pendingUser.id}
-                      variant="destructive"
-                    >
-                      {approving === pendingUser.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
+    <div className="min-h-screen bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] transition-colors duration-200">
+      <Header />
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Pending User Approvals</h1>
+          <p className="text-muted-foreground">
+            Review and approve user registration requests
+          </p>
         </div>
-      )}
+
+        {pendingUsers.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground text-lg">No pending users</p>
+              <p className="text-muted-foreground text-sm mt-2">
+                All registration requests have been processed
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {pendingUsers.map((pendingUser) => (
+              <Card key={pendingUser.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <CardTitle className="text-xl">{pendingUser.name}</CardTitle>
+                        <Badge className={getRoleBadgeColor(pendingUser.role)}>
+                          {pendingUser.role.charAt(0).toUpperCase() + pendingUser.role.slice(1)}
+                        </Badge>
+                      </div>
+                      <CardDescription className="flex flex-col gap-2 mt-2">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          <span>{pendingUser.email}</span>
+                        </div>
+                        {pendingUser.institution && (
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            <span>{pendingUser.institution}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-xs">
+                          <span>Registered: {new Date(pendingUser.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleApprove(pendingUser.id, true)}
+                        disabled={approving === pendingUser.id}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {approving === pendingUser.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Approve
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => handleApprove(pendingUser.id, false)}
+                        disabled={approving === pendingUser.id}
+                        variant="destructive"
+                      >
+                        {approving === pendingUser.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Reject
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

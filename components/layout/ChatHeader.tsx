@@ -128,7 +128,7 @@ export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {onCreateManuscript && (
+          {/* {onCreateManuscript && (
             <Button
               variant="ghost"
               size="icon"
@@ -138,7 +138,7 @@ export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange
             >
               <Plus className="h-4 w-4" />
             </Button>
-          )}
+          )} */}
         </div>
 
         {/* Right side - Search, Notifications, and Profile */}
@@ -246,6 +246,14 @@ export function ChatHeader({ manuscripts, activeManuscriptId, onManuscriptChange
                       <span>Profile</span>
                     </Link>
                   </DropdownMenuItem>
+                  {user.role === "super_admin" && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin/pending-users" className="flex items-center">
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        <span>Requests</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem asChild>
                     <Link href="/" className="flex items-center">
                       <Settings className="mr-2 h-4 w-4" />

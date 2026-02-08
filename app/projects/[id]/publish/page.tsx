@@ -28,6 +28,14 @@ export default function PublishPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analysisLines, setAnalysisLines] = useState<string[]>([])
+  const [analysisScore, setAnalysisScore] = useState(85)
+  const checklistItems = [
+    "All authors have approved the final draft.",
+    "High-resolution figures uploaded.",
+    "Conflicts of interest statement declared.",
+    "Data availability statement provided.",
+  ]
+  const [checklistCompletedCount, setChecklistCompletedCount] = useState(2)
   const [journal, setJournal] = useState<string>("")
 
   const shareUrl = useMemo(() => {
@@ -69,7 +77,6 @@ export default function PublishPage() {
     try {
       setIsPublishing(true)
       setPublishError(null)
-      await handleAnalyze()
       const response = await fetch("/api/published", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,6 +137,10 @@ export default function PublishPage() {
         .filter(Boolean)
       setAnalysisResult(suggestionsText)
       setAnalysisLines(lines)
+      const nextScore = Math.max(60, Math.min(95, 95 - lines.length * 2))
+      setAnalysisScore(nextScore)
+      const completedCount = Math.max(0, Math.min(checklistItems.length, Math.round((nextScore / 100) * checklistItems.length)))
+      setChecklistCompletedCount(completedCount)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to analyze manuscript."
       setAnalysisError(message)
@@ -170,14 +181,18 @@ export default function PublishPage() {
                 </span>
               </div>
               <div className="flex items-end gap-6">
-                <div className="text-6xl font-bold text-[#1DA619]">85%</div>
+                <div className="text-6xl font-bold text-[#1DA619]">{analysisScore}%</div>
                 <div className="flex-1 pb-2">
                   <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#1DA619]" style={{ width: "85%" }} />
+                    <div className="h-full bg-[#1DA619]" style={{ width: `${analysisScore}%` }} />
                   </div>
                 </div>
-                <button className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-sm transition-colors">
-                  View Feedback
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analysisLoading || !contentHtml}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {analysisLoading ? "Analyzing..." : "View Feedback"}
                 </button>
               </div>
               <p className="mt-4 text-sm text-[#6B7280] leading-relaxed">
@@ -279,15 +294,12 @@ export default function PublishPage() {
             <Card className="bg-white rounded-2xl p-6 border border-[#E5E0D4] shadow-sm sticky top-24">
               <h3 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-4">Submission Checklist</h3>
               <ul className="space-y-4 text-sm">
-                {[
-                  "All authors have approved the final draft.",
-                  "High-resolution figures uploaded.",
-                  "Conflicts of interest statement declared.",
-                  "Data availability statement provided.",
-                ].map((item, index) => (
+                {checklistItems.map((item, index) => (
                   <li key={item} className="flex items-start gap-3">
                     <span
-                      className={`mt-0.5 h-4 w-4 rounded-full border-2 ${index < 2 ? "border-[#1DA619] bg-[#1DA619]" : "border-[#6B7280]"}`}
+                      className={`mt-0.5 h-4 w-4 rounded-full border-2 ${
+                        index < checklistCompletedCount ? "border-[#1DA619] bg-[#1DA619]" : "border-[#6B7280]"
+                      }`}
                     />
                     <span>{item}</span>
                   </li>
