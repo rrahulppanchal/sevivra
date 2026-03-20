@@ -5,8 +5,10 @@ import { useParams } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/hooks/use-auth"
-import { Sparkles, UserPlus } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Sparkles, Trash2, UserPlus } from "lucide-react"
 
 interface UserOption {
   id: string
@@ -20,6 +22,15 @@ interface ProjectRecord {
   users: string[]
 }
 
+interface NotificationItem {
+  _id: string
+  recipientId?: string
+  title: string
+  message: string
+  status: "unread" | "read" | "accepted" | "declined"
+  createdAt: string
+}
+
 export default function ProjectCollaboratorsPage() {
   const params = useParams()
   const projectId = typeof params?.id === "string" ? params.id : ""
@@ -30,6 +41,8 @@ export default function ProjectCollaboratorsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [outgoingRequests, setOutgoingRequests] = useState<NotificationItem[]>([])
+  const [requestsLoading, setRequestsLoading] = useState(false)
 
   useEffect(() => {
     if (!projectId) {
@@ -74,6 +87,7 @@ export default function ProjectCollaboratorsPage() {
     }
 
     loadData()
+    fetchRequests(projectId)
 
     return () => {
       isMounted = false
@@ -81,6 +95,8 @@ export default function ProjectCollaboratorsPage() {
   }, [projectId])
 
   const projectUsers = useMemo(() => project?.users || [], [project])
+  const ownerId = project?.users?.[0]
+  const isOwnerView = Boolean(ownerId && user?.id === ownerId)
 
   const currentCollaborators = useMemo(() => {
     return usersOptions.filter((userOption) => projectUsers.includes(userOption.id))
@@ -97,6 +113,10 @@ export default function ProjectCollaboratorsPage() {
   }, [projectUsers, searchValue, usersOptions])
 
   const suggestedUsers = useMemo(() => availableUsers.slice(0, 3), [availableUsers])
+
+  const userMap = useMemo(() => {
+    return new Map(usersOptions.map((option) => [option.id, option]))
+  }, [usersOptions])
 
   const getInitials = (name: string) => {
     return name
@@ -125,14 +145,72 @@ export default function ProjectCollaboratorsPage() {
     setProject(result?.data || project)
   }
 
+  const fetchRequests = async (currentProjectId: string) => {
+    try {
+      setRequestsLoading(true)
+      const response = await fetch(
+        `/api/notifications?sent=true&type=collaboration_request&projectId=${encodeURIComponent(currentProjectId)}`,
+      )
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to load requests.")
+      }
+      setOutgoingRequests(Array.isArray(result?.data) ? result.data : [])
+    } catch (err) {
+      console.error("Failed to load requests:", err)
+    } finally {
+      setRequestsLoading(false)
+    }
+  }
+
   const handleAddCollaborator = async (userId: string) => {
     if (!project) return
     try {
       setIsSaving(true)
       setError(null)
-      await updateProjectUsers([...projectUsers, userId])
+      const requesterName = user?.name || "A collaborator"
+      const response = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientId: userId,
+          type: "collaboration_request",
+          title: "Collaboration request",
+          message: `${requesterName} invited you to collaborate on ${project.title}.`,
+          metadata: {
+            projectId: project._id,
+            projectTitle: project.title,
+          },
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || "Failed to send request.")
+      }
+      if (result?.data) {
+        setOutgoingRequests((prev) => [result.data, ...prev])
+      } else {
+        fetchRequests(project._id)
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update collaborators."
+      const message = err instanceof Error ? err.message : "Failed to send request."
+      setError(message)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCancelRequest = async (requestId: string) => {
+    try {
+      setIsSaving(true)
+      const response = await fetch(`/api/notifications/${requestId}`, { method: "DELETE" })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to cancel request.")
+      }
+      setOutgoingRequests((prev) => prev.filter((item) => item._id !== requestId))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel request."
       setError(message)
     } finally {
       setIsSaving(false)
@@ -188,7 +266,9 @@ export default function ProjectCollaboratorsPage() {
                 {!isLoading &&
                   !error &&
                   currentCollaborators.map((collaborator) => {
-                    const isOwner = user?.id === collaborator.id
+                    const ownerId = project?.users?.[0]
+                    const isOwner = Boolean(ownerId && collaborator.id === ownerId)
+                    const isSelf = Boolean(user?.id && collaborator.id === user.id)
                     return (
                       <div key={collaborator.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
                         <div className="flex items-center gap-4">
@@ -201,27 +281,72 @@ export default function ProjectCollaboratorsPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className="relative">
-                            <select
-                              className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1F2937] dark:text-[#E5E7EB] text-sm rounded-lg focus:ring-[#1DA619] focus:border-[#1DA619] block w-48 p-2.5 pr-8 cursor-pointer"
-                              disabled
-                              value={isOwner ? "Owner" : "Collaborator"}
-                              onChange={() => {}}
-                            >
-                              <option>Owner</option>
-                              <option>Collaborator</option>
-                              <option>Editor</option>
-                              <option>Viewer</option>
-                            </select>
-                            <span className="absolute right-2 top-2.5 text-gray-500 pointer-events-none text-sm">▼</span>
-                          </div>
-                          <button
-                            className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
-                            disabled={isOwner || isSaving}
-                            onClick={() => handleRemoveCollaborator(collaborator.id)}
-                          >
-                            ✕
-                          </button>
+                          {isOwnerView && !isOwner && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                                  disabled={isSaving}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Remove collaborator?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This collaborator will no longer have access to the project.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={() => handleRemoveCollaborator(collaborator.id)}
+                                  >
+                                    Remove
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                          {!isOwnerView && isSelf && !isOwner && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  className="text-xs font-semibold text-red-500 hover:text-red-600 transition-colors"
+                                  disabled={isSaving}
+                                >
+                                  Leave project
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Leave this project?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    You will lose access to this project and its manuscripts.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={() => handleRemoveCollaborator(collaborator.id)}
+                                  >
+                                    Leave
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                          <span className={cn(
+                            "px-3 py-1 rounded-full text-xs font-semibold border",
+                            isOwner
+                              ? "bg-[#1DA619]/10 text-[#1DA619] border-[#1DA619]/20"
+                              : "bg-[#F5F1E6] text-[#6B7280] border-[#E5E0D4] dark:bg-[#1F2937] dark:text-[#9CA3AF] dark:border-[#404040]"
+                          )}>
+                            {isOwner ? "Owner" : "Collaborator"}
+                          </span>
                         </div>
                       </div>
                     )
@@ -229,94 +354,186 @@ export default function ProjectCollaboratorsPage() {
               </div>
             </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-6">
-                <section className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
-                  <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] bg-gray-50/50 dark:bg-white/5">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">Find Collaborators</h2>
-                  </div>
-                  <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] bg-blue-50/30 dark:bg-blue-900/10">
-                    <div className="flex items-center gap-2 mb-4 text-[#F26419]">
-                      <Sparkles className="h-4 w-4" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Suggested by Gemini</span>
+            {isOwnerView && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-6">
+                  <section className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
+                    <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] bg-gray-50/50 dark:bg-white/5">
+                      <h2 className="text-lg font-semibold flex items-center gap-2">Find Collaborators</h2>
                     </div>
-                    <div className="grid gap-4">
-                      {suggestedUsers.length === 0 && (
-                        <div className="text-xs text-[#6B7280]">No suggestions available.</div>
-                      )}
-                      {suggestedUsers.map((suggested) => (
-                        <div key={suggested.id} className="bg-white dark:bg-[#262626] p-4 rounded-lg border border-[#E5E0D4] dark:border-[#404040] flex items-start justify-between shadow-sm">
-                          <div className="flex gap-4">
-                            <div className="h-12 w-12 rounded-full bg-[#1DA619]/10 flex items-center justify-center text-[#1DA619] font-bold text-lg">
-                              {getInitials(suggested.name)}
-                            </div>
-                            <div>
-                              <h3 className="font-medium">{suggested.name}</h3>
-                              <p className="text-sm text-[#6B7280] mb-1">{suggested.email}</p>
-                            </div>
+                    <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] bg-blue-50/30 dark:bg-blue-900/10">
+                      <div className="mb-5">
+                        <Input
+                          value={searchValue}
+                          onChange={(event) => setSearchValue(event.target.value)}
+                          placeholder="Search by author name or email"
+                          className="h-14 pl-5 text-lg px-6 rounded-xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
+                        />
+                        {searchValue && (
+                          <div className="mt-3 space-y-2">
+                            {availableUsers.length === 0 && (
+                              <p className="text-xs text-[#6B7280]">No matching users found.</p>
+                            )}
+                            {availableUsers.map((candidate) => (
+                              <div key={candidate.id} className="flex items-center justify-between rounded-lg border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626] px-4 py-3">
+                                <div>
+                                  <div className="font-medium">{candidate.name}</div>
+                                  <div className="text-xs text-[#6B7280]">{candidate.email}</div>
+                                </div>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      disabled={isSaving}
+                                      className="bg-[#1DA619] text-white hover:bg-[#158514] gap-2"
+                                    >
+                                      <UserPlus className="h-4 w-4" />
+                                      Request
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Send collaboration request?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {candidate.name} will receive a request to collaborate on {project?.title}.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-[#1DA619] text-white hover:bg-[#158514]"
+                                        onClick={() => handleAddCollaborator(candidate.id)}
+                                      >
+                                        Send request
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            ))}
                           </div>
-                          <button
-                            className="text-[#1DA619] hover:bg-[#1DA619]/10 p-2 rounded-full transition-colors disabled:opacity-50"
-                            disabled={isSaving}
-                            onClick={() => handleAddCollaborator(suggested.id)}
-                          >
-                            <UserPlus className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="p-6">
-                    <div className="relative">
-                      <Input
-                        value={searchValue}
-                        onChange={(event) => setSearchValue(event.target.value)}
-                        placeholder="Search by author name or email"
-                        className="pl-4"
-                      />
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {availableUsers.length === 0 && (
-                        <p className="text-xs text-[#6B7280]">No matching users found.</p>
-                      )}
-                      {availableUsers.map((candidate) => (
-                        <div key={candidate.id} className="flex items-center justify-between rounded-lg border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626] px-4 py-3">
-                          <div>
-                            <div className="font-medium">{candidate.name}</div>
-                            <div className="text-xs text-[#6B7280]">{candidate.email}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mb-4 text-[#F26419]">
+                        <Sparkles className="h-4 w-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Suggested by Gemini</span>
+                      </div>
+                      <div className="grid gap-4">
+                        {suggestedUsers.length === 0 && (
+                          <div className="text-xs text-[#6B7280]">No suggestions available.</div>
+                        )}
+                        {suggestedUsers.map((suggested) => (
+                          <div key={suggested.id} className="bg-white dark:bg-[#262626] p-4 rounded-lg border border-[#E5E0D4] dark:border-[#404040] flex items-start justify-between shadow-sm">
+                            <div className="flex gap-4">
+                              <div className="h-12 w-12 rounded-full bg-[#1DA619]/10 flex items-center justify-center text-[#1DA619] font-bold text-lg">
+                                {getInitials(suggested.name)}
+                              </div>
+                              <div>
+                                <h3 className="font-medium">{suggested.name}</h3>
+                                <p className="text-sm text-[#6B7280] mb-1">{suggested.email}</p>
+                              </div>
+                            </div>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  className="text-[#1DA619] hover:bg-[#1DA619]/10 p-2 rounded-full transition-colors disabled:opacity-50"
+                                  disabled={isSaving}
+                                >
+                                  <UserPlus className="h-4 w-4" />
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Send collaboration request?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {suggested.name} will receive a request to collaborate on {project?.title}.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-[#1DA619] text-white hover:bg-[#158514]"
+                                    onClick={() => handleAddCollaborator(suggested.id)}
+                                  >
+                                    Send request
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
-                          <Button
-                            onClick={() => handleAddCollaborator(candidate.id)}
-                            disabled={isSaving}
-                            className="bg-[#1DA619] text-white hover:bg-[#158514] gap-2"
-                          >
-                            <UserPlus className="h-4 w-4" />
-                            Add
-                          </Button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </section>
-              </div>
+                  </section>
+                </div>
 
-              <div className="lg:col-span-1">
-                <section className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden h-full">
-                  <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">Requests</h2>
-                    <span className="bg-[#F26419] text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
-                  </div>
-                  <div className="p-4 space-y-4 text-xs text-[#6B7280]">
-                    No pending collaboration requests.
-                  </div>
-                  <div className="p-4 border-t border-[#E5E0D4] dark:border-[#404040] text-center">
-                    <button className="text-xs text-[#6B7280] hover:text-[#1DA619] transition-colors">
-                      View all past requests
-                    </button>
-                  </div>
-                </section>
+                <div className="lg:col-span-1">
+                  <section className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden h-full">
+                    <div className="p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+                      <h2 className="text-lg font-semibold flex items-center gap-2">Requests</h2>
+                      <span className="bg-[#F26419] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        {outgoingRequests.length}
+                      </span>
+                    </div>
+                    <div className="p-4 space-y-4 text-xs text-[#6B7280]">
+                      {requestsLoading && <div>Loading requests...</div>}
+                      {!requestsLoading && outgoingRequests.length === 0 && (
+                        <div>No pending collaboration requests.</div>
+                      )}
+                      {!requestsLoading &&
+                        outgoingRequests.map((request) => (
+                          <div key={request._id} className="rounded-lg border border-[#E5E0D4] dark:border-[#404040] p-3 bg-white dark:bg-[#262626]">
+                          <div className="text-sm font-semibold text-[#1F2937] dark:text-[#E5E7EB]">
+                            {userMap.get(request.recipientId || "")?.name || request.title}
+                          </div>
+                          <div className="text-xs text-[#6B7280] mt-1">
+                            {userMap.get(request.recipientId || "")?.email || request.message}
+                          </div>
+                            <div className="mt-2 flex items-center justify-between">
+                              <span className="text-[10px] uppercase tracking-wide text-[#1DA619]">
+                                {request.status}
+                              </span>
+                              {request.status === "unread" && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="text-[10px] font-semibold text-red-500 hover:text-red-600"
+                                      disabled={isSaving}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Cancel request?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This request will be removed and the user will no longer see it.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Keep</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-red-600 hover:bg-red-700 text-white"
+                                        onClick={() => handleCancelRequest(request._id)}
+                                      >
+                                        Cancel request
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="p-4 border-t border-[#E5E0D4] dark:border-[#404040] text-center">
+                      <button className="text-xs text-[#6B7280] hover:text-[#1DA619] transition-colors">
+                        View all past requests
+                      </button>
+                    </div>
+                  </section>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </main>

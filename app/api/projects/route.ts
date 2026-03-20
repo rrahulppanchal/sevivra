@@ -169,8 +169,15 @@ export async function GET(request: NextRequest) {
     }
 
     const { page, limit, type } = queryParams
+    const currentUser = await getCurrentUser()
+    if (!currentUser?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
     const skip = (page - 1) * limit
-    const filter = type ? { type } : {}
+    const filter = {
+      ...(type ? { type } : {}),
+      users: currentUser.id,
+    }
 
     const total = await Project.countDocuments(filter)
 

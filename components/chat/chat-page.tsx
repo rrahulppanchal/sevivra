@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react"
 import type { ElementType } from "react"
-import { Send, Plus, List, Image as ImageIcon, X, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp } from "lucide-react"
+import { Send, Plus, List, Image as ImageIcon, X, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp, Brain, Search, Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -67,6 +67,11 @@ interface Comment {
   avatar: string
   createdAt: string
   isHighlighted?: boolean
+}
+
+interface ReferenceSelection {
+  id: string
+  text: string
 }
 
 interface ChatSessionSummary {
@@ -212,7 +217,17 @@ export default function ChatPage() {
   const [currentHeading, setCurrentHeading] = useState<1 | 2 | 3 | 4 | null>(null)
   const [isBoldActive, setIsBoldActive] = useState(false)
   const [isItalicActive, setIsItalicActive] = useState(false)
-  const [selectedModel, setSelectedModel] = useState("gemini-3-flash-preview")
+  const selectedModel = process.env.NEXT_PUBLIC_GEMINI_MODEL || "gemini-3-flash-preview"
+  type ChatMode = "reasoning" | "research" | "writing"
+  const chatModes: Array<{ id: ChatMode; name: string; description: string }> = [
+    { id: "reasoning", name: "Reasoning", description: "Q&A only, no editor changes" },
+    { id: "research", name: "Research", description: "World research, no editor changes" },
+    { id: "writing", name: "Writing", description: "Targeted edits to selected text" },
+  ]
+  const defaultMode = (process.env.NEXT_PUBLIC_DEFAULT_MODE as ChatMode) || "writing"
+  const [selectedMode, setSelectedMode] = useState<ChatMode>(
+    chatModes.some((mode) => mode.id === defaultMode) ? defaultMode : "writing",
+  )
   const [isOutlineExpanded, setIsOutlineExpanded] = useState(true)
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(true)
   const [isCollaboratorsOpen, setIsCollaboratorsOpen] = useState(false)
@@ -224,14 +239,8 @@ export default function ChatPage() {
   const [collaboratorsError, setCollaboratorsError] = useState<string | null>(null)
   const [collaboratorsSaving, setCollaboratorsSaving] = useState(false)
 
-  const aiModels = [
-    { id: "gemini-3-flash-preview", name: "Gemini 1.5 Flash", description: "Google's fast, efficient research model" },
-    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", description: "Google's advanced and more capable model" },
-    { id: "gemini-pro", name: "Gemini Pro (Legacy)", description: "Google's general-purpose LLM" },
-  ]
-
-  const getModelName = (modelId: string) => {
-    return aiModels.find((m) => m.id === modelId)?.name || "GPT-4 (Research)"
+  const getModeName = (modeId: ChatMode) => {
+    return chatModes.find((mode) => mode.id === modeId)?.name || "Writing"
   }
 
   const activeManuscript = useMemo(() => {
@@ -466,7 +475,7 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    if (!projectId || !isCollaboratorsOpen) return
+    if (!projectId) return
 
     let isMounted = true
 
@@ -513,7 +522,7 @@ export default function ChatPage() {
     return () => {
       isMounted = false
     }
-  }, [isCollaboratorsOpen, projectId])
+  }, [projectId])
 
   useEffect(() => {
     if (!projectId) {
@@ -730,6 +739,7 @@ export default function ChatPage() {
               manuscriptId: activeManuscriptId,
               manuscriptTitle: activeManuscript?.title,
               model: selectedModel,
+              mode: selectedMode,
               messages: messages.map((message) => ({
                 type: message.type,
                 content: message.content,
@@ -767,7 +777,7 @@ export default function ChatPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [activeManuscript?.title, activeManuscriptId, documentContent, messages, outlineItems, selectedModel, sessionId])
+  }, [activeManuscript?.title, activeManuscriptId, documentContent, messages, outlineItems, selectedModel, selectedMode, sessionId])
 
   // Update active states for toolbar buttons when document content changes
   useEffect(() => {
@@ -779,9 +789,11 @@ export default function ChatPage() {
   }, [documentContent])
 
   const handleSend = async () => {
-    if (!activeManuscriptId || (!input.trim() && !imagePayload)) return
+    if (!activeManuscriptId || (!input.trim() && !imagePayload && referenceSelections.length === 0)) return
 
     const trimmedInput = input.trim()
+    const referencesPayload = referenceSelections.map((ref) => ref.text)
+    const messageForApi = trimmedInput || (referencesPayload.length > 0 ? "Use the selected references to guide edits." : "")
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
@@ -792,6 +804,7 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
+    setReferenceSelections([])
     const payloadImage = imagePayload
     clearImage()
     setIsLoading(true)
@@ -801,11 +814,13 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: trimmedInput,
+          message: messageForApi,
           documentContent,
           manuscriptTitle: activeManuscript?.title,
           model: selectedModel,
+          mode: selectedMode,
           manuscripts: manuscriptsJson,
+          references: referencesPayload,
           imageData: payloadImage?.data,
           imageMimeType: payloadImage?.mimeType,
         }),
@@ -826,8 +841,15 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, aiMessage])
 
-      if (result?.updatedContent) {
-        startReview(documentContent, result.updatedContent)
+      if (selectedMode === "writing") {
+        if (Array.isArray(result?.replacements) && result.replacements.length > 0) {
+          const updated = applyReplacements(documentContent, result.replacements)
+          if (updated && updated !== documentContent) {
+            startReview(documentContent, updated)
+          }
+        } else if (result?.updatedContent) {
+          startReview(documentContent, result.updatedContent)
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to get response from Gemini."
@@ -843,6 +865,63 @@ export default function ChatPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const addSelectionReference = (selectedText: string) => {
+    if (!selectedText) return
+    editorRef.current?.highlightSelection()
+    setReferenceSelections((prev) => {
+      if (prev.some((ref) => ref.text === selectedText)) {
+        return prev
+      }
+      return [...prev, { id: `${Date.now()}-${prev.length}`, text: selectedText }]
+    })
+  }
+
+  const removeSelectionReference = (id: string) => {
+    editorRef.current?.clearAllHighlights()
+    setReferenceSelections((prev) => prev.filter((ref) => ref.id !== id))
+  }
+
+  const applyReplacements = (
+    source: string,
+    replacements: Array<{ original: string; replacement: string }>,
+  ) => {
+    return replacements.reduce((current, entry) => {
+      if (!entry?.original || typeof entry.replacement !== "string") {
+        return current
+      }
+      return current.replace(entry.original, entry.replacement)
+    }, source)
+  }
+
+  const handleSelectionPopover = () => {
+    if (!editorContainerRef.current) return
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      setSelectionPopover(null)
+      return
+    }
+    const selectedText = selection.toString().trim()
+    if (!selectedText) {
+      setSelectionPopover(null)
+      return
+    }
+    if (!editorContainerRef.current.contains(selection.anchorNode)) {
+      setSelectionPopover(null)
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+    const containerRect = editorContainerRef.current.getBoundingClientRect()
+    const top = rect.top - containerRect.top - 36
+    const left = rect.left - containerRect.left + rect.width / 2
+    setSelectionPopover({
+      text: selectedText,
+      top: Math.max(8, top),
+      left: Math.max(16, Math.min(left, containerRect.width - 16)),
+    })
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -891,6 +970,42 @@ export default function ChatPage() {
   }, [projectUsers, usersOptions])
 
   const [comments, setComments] = useState<Comment[]>([])
+  const [referenceSelections, setReferenceSelections] = useState<ReferenceSelection[]>([])
+  const [selectionPopover, setSelectionPopover] = useState<{
+    text: string
+    top: number
+    left: number
+  } | null>(null)
+
+  const stripHighlightsFromHtml = (html: string) => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, "text/html")
+    doc.querySelectorAll("mark").forEach((node) => {
+      const parent = node.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(node.textContent || ""), node)
+      }
+    })
+    doc.querySelectorAll("[style*=\"background-color\"]").forEach((node) => {
+      if (node instanceof HTMLElement) {
+        node.style.backgroundColor = ""
+        if (!node.getAttribute("style")) {
+          node.removeAttribute("style")
+        }
+      }
+    })
+    return doc.body.innerHTML
+  }
+
+  useEffect(() => {
+    if (!activeManuscriptId) return
+    if (referenceSelections.length > 0) return
+    const stripped = stripHighlightsFromHtml(documentContent)
+    if (stripped !== documentContent) {
+      editorRef.current?.clearAllHighlights()
+      setDocumentContent(stripped)
+    }
+  }, [activeManuscriptId, documentContent, referenceSelections.length])
 
   const handleAddComment = async () => {
     if (!activeManuscriptId || !commentInput.trim()) return
@@ -1034,8 +1149,9 @@ export default function ChatPage() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (file.size > 2 * 1024 * 1024) {
-      setImageError("Image must be 2MB or меньше.")
+    const maxSizeBytes = file.type === "application/pdf" ? 10 * 1024 * 1024 : 2 * 1024 * 1024
+    if (file.size > maxSizeBytes) {
+      setImageError(file.type === "application/pdf" ? "PDF must be 10MB or less." : "Image must be 2MB or less.")
       event.target.value = ""
       return
     }
@@ -1044,22 +1160,26 @@ export default function ChatPage() {
     reader.onload = () => {
       const result = typeof reader.result === "string" ? reader.result : ""
       if (!result.startsWith("data:")) {
-        setImageError("Invalid image format.")
+        setImageError("Invalid file format.")
         return
       }
       const [header, base64] = result.split(",")
       const mimeMatch = header.match(/data:(.*?);base64/)
       const mimeType = mimeMatch?.[1] || file.type || "image/png"
       if (!base64) {
-        setImageError("Failed to read image.")
+        setImageError("Failed to read file.")
         return
       }
-      setImagePreview(result)
+      if (mimeType === "application/pdf") {
+        setImagePreview(null)
+      } else {
+        setImagePreview(result)
+      }
       setImagePayload({ data: base64, mimeType })
       setImageError(null)
     }
     reader.onerror = () => {
-      setImageError("Failed to read image.")
+      setImageError("Failed to read file.")
     }
     reader.readAsDataURL(file)
   }
@@ -1372,11 +1492,59 @@ export default function ChatPage() {
                   </button>
                 </div>
               )}
+              {!imagePreview && imagePayload?.mimeType === "application/pdf" && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-[#E5E0D4] bg-white p-2">
+                  <div className="h-14 w-14 rounded-lg border border-dashed border-[#E5E0D4] flex items-center justify-center text-xs font-semibold text-[#6B7280]">
+                    PDF
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-[#1F2937]">PDF attached</div>
+                    <div className="text-[10px] text-[#6B7280]">Ready to send</div>
+                  </div>
+                  <button onClick={clearImage} className="text-[#6B7280] hover:text-[#F26419]">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
               {imageError && <div className="mb-2 text-xs text-red-500">{imageError}</div>}
+              {referenceSelections.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      editorRef.current?.clearAllHighlights()
+                      setReferenceSelections([])
+                    }}
+                    className="text-xs font-semibold text-[#6B7280] hover:text-[#1F2937]"
+                  >
+                    Clear references
+                  </button>
+                </div>
+              )}
+              {referenceSelections.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {referenceSelections.map((ref, index) => (
+                    <span
+                      key={ref.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#E5E0D4] bg-white px-3 py-1 text-xs text-[#1F2937]"
+                      title={ref.text}
+                    >
+                      Ref {index + 1}
+                      <button
+                        type="button"
+                        onClick={() => removeSelectionReference(ref.id)}
+                        className="text-[#6B7280] hover:text-[#F26419]"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <input
                 ref={imageInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 className="hidden"
                 onChange={handleImageSelect}
               />
@@ -1410,19 +1578,37 @@ export default function ChatPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium text-[#1F2937] bg-white shadow-sm">
-                      <span className="text-[#F26419]">🤖</span>
-                      <span>{getModelName(selectedModel)}</span>
+                      {/* Icon in value */}
+                      <span className="flex items-center justify-center w-5 h-5 mr-1">
+                        {selectedMode === "reasoning" && <Brain className="h-4 w-4 text-[#6B7280]" />}
+                        {selectedMode === "research" && <Search className="h-4 w-4 text-[#6B7280]" />}
+                        {selectedMode === "writing" && <Pencil className="h-4 w-4 text-[#6B7280]" />}
+                      </span>
+                      <span>{getModeName(selectedMode)}</span>
                       <ChevronDown className="h-3 w-3" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel>AI Model</DropdownMenuLabel>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuLabel>Mode</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup value={selectedModel} onValueChange={setSelectedModel}>
-                      {aiModels.map((model) => (
-                        <DropdownMenuRadioItem key={model.id} value={model.id} className="flex flex-col items-start gap-0.5 py-2">
-                          <span className="font-medium text-sm">{model.name}</span>
-                          <span className="text-xs text-[#6B7280]">{model.description}</span>
+                    <DropdownMenuRadioGroup value={selectedMode} onValueChange={(value) => setSelectedMode(value as ChatMode)}>
+                      {chatModes.map((mode) => (
+                        <DropdownMenuRadioItem
+                          key={mode.id}
+                          value={mode.id}
+                          className="flex items-center gap-2 py-2"
+                        >
+                          {/* Icon */}
+                          <span className="flex items-center justify-center w-6 h-6">
+                            {mode.id === "reasoning" && <Brain className="h-4 w-4 text-[#6B7280]" />}
+                            {mode.id === "research" && <Search className="h-4 w-4 text-[#6B7280]" />}
+                            {mode.id === "writing" && <Pencil className="h-4 w-4 text-[#6B7280]" />}
+                          </span>
+                          {/* Text Content */}
+                          <span className="flex flex-col items-start">
+                            <span className="font-medium text-sm">{mode.name}</span>
+                            <span className="text-xs text-[#6B7280]">{mode.description}</span>
+                          </span>
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>
@@ -1565,7 +1751,30 @@ export default function ChatPage() {
             <div
               ref={editorContainerRef}
               className="max-w-[850px] w-full bg-white shadow-lg min-h-[1000px] p-12 rounded-lg relative break-words [overflow-wrap:anywhere]"
+              onMouseUp={handleSelectionPopover}
+              onKeyUp={handleSelectionPopover}
             >
+              {selectionPopover && (
+                <div
+                  className="absolute z-20"
+                  style={{
+                    top: selectionPopover.top,
+                    left: selectionPopover.left,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addSelectionReference(selectionPopover.text)
+                      setSelectionPopover(null)
+                    }}
+                    className="rounded-full bg-[#1DA619] px-3 py-1.5 text-xs font-semibold text-white shadow-md hover:bg-[#158514]"
+                  >
+                    Add to chat
+                  </button>
+                </div>
+              )}
               {isReviewing ? (
                 <div className="prose prose-lg max-w-none font-serif text-[#1F2937]">
                   {reviewLines.map((line) => {

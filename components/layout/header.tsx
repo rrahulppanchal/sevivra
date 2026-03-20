@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, Search, Bell, User, Home, FileText, MessageCircle, Zap, Settings, LogOut, ChevronDown, Mail, CheckCircle, AlertCircle, Info } from "lucide-react"
+import { Menu, Search, Bell, User, Home, FileText, MessageCircle, Zap, Settings, LogOut, ChevronDown, Mail, CheckCircle, AlertCircle, Info, UserPlus } from "lucide-react"
 import { useLayout } from "./layout-provider"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
@@ -16,42 +16,16 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { useEffect, useMemo, useState } from "react"
 
-// Dummy notification data
-const notifications = [
-  {
-    id: "1",
-    type: "success",
-    title: "Review completed",
-    message: "Your review for 'Quantum Entanglement' has been submitted",
-    time: "2 minutes ago",
-    icon: CheckCircle,
-  },
-  {
-    id: "2",
-    type: "warning",
-    title: "Deadline approaching",
-    message: "Review for 'Ethical AI' is due in 2 days",
-    time: "1 hour ago",
-    icon: AlertCircle,
-  },
-  {
-    id: "3",
-    type: "info",
-    title: "New collaboration request",
-    message: "Dr. Sarah Miller wants to collaborate on a project",
-    time: "3 hours ago",
-    icon: Info,
-  },
-  {
-    id: "4",
-    type: "info",
-    title: "Comment on your paper",
-    message: "Ava Chen commented on section 2.1",
-    time: "5 hours ago",
-    icon: Mail,
-  },
-]
+type NotificationItem = {
+  _id: string
+  type: "collaboration_request" | "info" | "success" | "warning"
+  title: string
+  message: string
+  status: "unread" | "read" | "accepted" | "declined"
+  createdAt: string
+}
 
 const navigationItems = [
   { label: "Projects", href: "/projects", icon: Zap },
@@ -62,7 +36,12 @@ const navigationItems = [
 export function Header() {
   const { sidebarOpen, setSidebarOpen } = useLayout()
   const { user, logout } = useAuth()
-  const unreadCount = notifications.length
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const unreadCount = useMemo(
+    () => notifications.filter((item) => item.status === "unread").length,
+    [notifications],
+  )
 
   // Get user initials for avatar
   const getUserInitials = (name: string) => {
@@ -81,6 +60,50 @@ export function Header() {
       console.error("Logout error:", error)
     }
   }
+
+  const fetchNotifications = async () => {
+    try {
+      setNotificationsLoading(true)
+      const response = await fetch("/api/notifications")
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to load notifications.")
+      }
+      setNotifications(Array.isArray(result?.data) ? result.data : [])
+    } catch (error) {
+      console.error("Failed to load notifications:", error)
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  const handleNotificationStatus = async (id: string, status: NotificationItem["status"]) => {
+    try {
+      const response = await fetch(`/api/notifications/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to update notification.")
+      }
+      setNotifications((prev) => prev.map((item) => (item._id === id ? result.data : item)))
+    } catch (error) {
+      console.error("Failed to update notification:", error)
+    }
+  }
+
+  const formatTime = (value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  }
+
+  useEffect(() => {
+    if (!user) return
+    fetchNotifications()
+  }, [user])
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-white">
@@ -185,8 +208,21 @@ export function Header() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <div className="max-h-[400px] overflow-y-auto">
+                  {notificationsLoading && (
+                    <div className="p-4 text-xs text-muted-foreground">Loading notifications...</div>
+                  )}
+                  {!notificationsLoading && notifications.length === 0 && (
+                    <div className="p-4 text-xs text-muted-foreground">No notifications yet.</div>
+                  )}
                   {notifications.map((notification) => {
-                    const Icon = notification.icon
+                    const Icon =
+                      notification.type === "success"
+                        ? CheckCircle
+                        : notification.type === "warning"
+                          ? AlertCircle
+                          : notification.type === "collaboration_request"
+                            ? UserPlus
+                            : Info
                     const iconColor =
                       notification.type === "success"
                         ? "text-emerald-600"
@@ -196,8 +232,9 @@ export function Header() {
 
                     return (
                       <DropdownMenuItem
-                        key={notification.id}
-                        className="flex flex-col items-start gap-1 p-3 cursor-pointer hover:bg-secondary"
+                        key={notification._id}
+                        className="flex flex-col items-start gap-1 p-3 cursor-pointer data-[highlighted]:bg-black/5 data-[highlighted]:text-inherit dark:data-[highlighted]:bg-white/5"
+                        onClick={() => notification.status === "unread" && handleNotificationStatus(notification._id, "read")}
                       >
                         <div className="flex items-start gap-3 w-full">
                           <Icon className={cn("h-5 w-5 mt-0.5 shrink-0", iconColor)} />
@@ -209,8 +246,33 @@ export function Header() {
                               {notification.message}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">
-                              {notification.time}
+                              {formatTime(notification.createdAt)}
                             </div>
+                            {notification.type === "collaboration_request" && notification.status === "unread" && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 bg-[#1DA619] text-white hover:bg-[#158514]"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleNotificationStatus(notification._id, "accepted")
+                                  }}
+                                >
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleNotificationStatus(notification._id, "declined")
+                                  }}
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </DropdownMenuItem>
@@ -218,9 +280,9 @@ export function Header() {
                   })}
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="justify-center text-sm text-primary font-medium">
-                  View all notifications
-                </DropdownMenuItem>
+                <p className="text-xs text-foreground/50 font-medium px-2 py-1">
+                  Notifications will be deleted after 30 days.
+                </p>
               </DropdownMenuContent>
             </DropdownMenu>
           )}

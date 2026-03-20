@@ -209,7 +209,21 @@ export default function HomePage() {
                 <div className="p-5 text-sm text-red-500">{projectsError}</div>
               )}
               {!projectsLoading && !projectsError && topProjects.length === 0 && (
-                <div className="p-5 text-sm text-[#6B7280] dark:text-[#9CA3AF]">No projects yet.</div>
+                <div className="p-1">
+                  <div className="mx-auto max-w-md rounded-2xl px-6 py-10 text-center shadow-none">
+                    <h3 className="text-xl font-semibold text-[#1F2937] dark:text-[#E5E7EB]">No Projects Yet</h3>
+                    <p className="mt-2 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                      Create your first project to start collaborating.
+                    </p>
+                    <div className="mt-6">
+                      <Link href="/projects">
+                        <Button className="h-10 rounded-full">
+                          + Create Project
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               )}
               {!projectsLoading &&
                 !projectsError &&

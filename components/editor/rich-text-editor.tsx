@@ -5,6 +5,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
 import { TextStyle } from "@tiptap/extension-text-style"
+import Highlight from "@tiptap/extension-highlight"
 import { useImperativeHandle, forwardRef, useEffect, useRef } from "react"
 
 interface RichTextEditorProps {
@@ -25,6 +26,8 @@ export interface RichTextEditorRef {
   toggleLowercase: () => void
   isBold: () => boolean
   isItalic: () => boolean
+  highlightSelection: () => void
+  clearAllHighlights: () => void
 }
 
 // Custom extension for font size using inline styles
@@ -110,6 +113,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         }),
         FontSize,
         TextTransform,
+        Highlight.configure({ multicolor: true }),
       ],
       content,
       editable: !readOnly,
@@ -202,6 +206,24 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       },
       isItalic: () => {
         return editor?.isActive("italic") ?? false
+      },
+      highlightSelection: () => {
+        if (!editor) return
+        editor
+          .chain()
+          .focus()
+          .setHighlight({ color: "#FEF3C7" })
+          .run()
+      },
+      clearAllHighlights: () => {
+        if (!editor) return
+        const { from, to } = editor.state.selection
+        editor
+          .chain()
+          .selectAll()
+          .unsetHighlight()
+          .setTextSelection({ from, to })
+          .run()
       },
     }))
 

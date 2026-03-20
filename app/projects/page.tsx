@@ -7,13 +7,16 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Filter, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react"
+import { Calendar as CalendarIcon, Filter, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
 
 type ProjectType = "Journal Articles" | "Conference Papers" | "Books & Chapters" | "Preprints"
 
@@ -49,6 +52,7 @@ export default function ProjectsPage() {
   const [usersOptions, setUsersOptions] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [collaboratorSearch, setCollaboratorSearch] = useState("")
   const [formState, setFormState] = useState({
     title: "",
     subtitle: "",
@@ -182,6 +186,16 @@ export default function ProjectsPage() {
       .map((user) => user.name)
     return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`
   }, [formState.users, usersError, usersLoading, usersOptions])
+
+  const filteredUsersOptions = useMemo(() => {
+    const term = collaboratorSearch.trim().toLowerCase()
+    if (!term) return usersOptions
+    return usersOptions.filter(
+      (option) =>
+        option.name.toLowerCase().includes(term) ||
+        option.email.toLowerCase().includes(term),
+    )
+  }, [collaboratorSearch, usersOptions])
 
   const totalProjects = projects.length
   const totalTypes = new Set(projects.map((project) => project.type)).size
@@ -407,7 +421,7 @@ export default function ProjectsPage() {
                       Add Project
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-xl">
+                  <DialogContent className="max-w-xl rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
                     <DialogHeader>
                       <DialogTitle>{editingProject ? "Edit Project" : "Add Project"}</DialogTitle>
                       <DialogDescription>Provide the project details and save to the list.</DialogDescription>
@@ -415,37 +429,60 @@ export default function ProjectsPage() {
                     <div className="grid gap-4">
                       <div className="grid gap-2">
                         <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Title</label>
-                        <Input value={formState.title} onChange={handleInputChange("title")} placeholder="Project title" />
+                        <Input
+                          value={formState.title}
+                          onChange={handleInputChange("title")}
+                          placeholder="Project title"
+                          className="h-11 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
+                        />
                         {formErrors.title && <p className="text-xs text-red-500">{formErrors.title}</p>}
                       </div>
                       <div className="grid gap-2">
                         <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Subtitle</label>
-                        <Input value={formState.subtitle} onChange={handleInputChange("subtitle")} placeholder="Optional subtitle" />
+                        <Input
+                          value={formState.subtitle}
+                          onChange={handleInputChange("subtitle")}
+                          placeholder="Optional subtitle"
+                          className="h-11 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
+                        />
                       </div>
                       <div className="grid gap-2">
                         <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Description</label>
-                        <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Project description" />
+                        <Textarea
+                          value={formState.description}
+                          onChange={handleInputChange("description")}
+                          placeholder="Project description"
+                          className="min-h-[120px] border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
+                        />
                         {formErrors.description && <p className="text-xs text-red-500">{formErrors.description}</p>}
                       </div>
                       <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Users</label>
+                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Collaborators</label>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-between text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]"
+                              className="w-full justify-between text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB] h-11 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
                               disabled={usersLoading || !!usersError}
                             >
                               {selectedUsersLabel}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="w-72">
-                            {usersOptions.length === 0 && (
+                            <div className="p-2 border-b border-[#E5E0D4] dark:border-[#404040]">
+                              <Input
+                                value={collaboratorSearch}
+                                onChange={(event) => setCollaboratorSearch(event.target.value)}
+                                placeholder="Search collaborators..."
+                                className="h-9 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]"
+                              />
+                            </div>
+                            {filteredUsersOptions.length === 0 && (
                               <div className="px-2 py-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                                No users available
+                                No users found
                               </div>
                             )}
-                            {usersOptions.map((user) => (
+                            {filteredUsersOptions.map((user) => (
                               <DropdownMenuCheckboxItem
                                 key={user.id}
                                 checked={formState.users.includes(user.id)}
@@ -471,7 +508,7 @@ export default function ProjectsPage() {
                             setFormErrors((prev) => ({ ...prev, type: undefined }))
                           }}
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full h-11 data-[size=default]:h-11 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -485,7 +522,35 @@ export default function ProjectsPage() {
                       </div>
                       <div className="grid gap-2">
                         <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Created Date</label>
-                        <Input type="date" value={formState.createdDate} onChange={handleInputChange("createdDate")} />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left text-xs font-medium h-11 border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]",
+                                !formState.createdDate && "text-[#6B7280] dark:text-[#9CA3AF]"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {formState.createdDate
+                                ? format(new Date(formState.createdDate), "PPP")
+                                : "Pick a date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={formState.createdDate ? new Date(formState.createdDate) : undefined}
+                              onSelect={(date) => {
+                                setFormState((prev) => ({
+                                  ...prev,
+                                  createdDate: date ? format(date, "yyyy-MM-dd") : "",
+                                }))
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
                     {formError && (
@@ -569,7 +634,7 @@ export default function ProjectsPage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent>
+                      <AlertDialogContent className="rounded-2xl border border-[#E5E0D4] dark:border-[#404040] bg-white dark:bg-[#262626]">
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete project?</AlertDialogTitle>
                           <AlertDialogDescription>
