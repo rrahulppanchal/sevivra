@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/db'
 import User from '@/models/User'
 import type { UserRole } from '@/models/User'
+import { sendVerificationEmail } from '@/lib/email'
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,17 +38,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create new user (pending approval)
+    // Create new user (email not verified)
     const newUser = new User({
       name,
       email: email.toLowerCase(),
       password,
       role: userRole,
       institution: institution || undefined,
-      isApproved: false,
+      isEmailVerified: false,
     })
 
+    // Generate verification token and save
+    const verificationToken = newUser.generateVerificationToken()
     await newUser.save()
+
+    // Send verification email
+    try {
+      await sendVerificationEmail(newUser.email, verificationToken, newUser.name)
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError)
+    }
 
     // Return user data (without password)
     const userData = {
@@ -56,19 +66,19 @@ export async function POST(request: NextRequest) {
       email: newUser.email,
       role: newUser.role,
       institution: newUser.institution,
-      isApproved: newUser.isApproved,
+      isEmailVerified: newUser.isEmailVerified,
     }
 
     return NextResponse.json(
       {
-        message: 'Registration successful. Your account is pending approval from the administrator.',
+        message: 'Registration successful. Please check your email to verify your account.',
         user: userData,
       },
       { status: 201 }
     )
   } catch (error: any) {
     console.error('Registration error:', error)
-    
+
     if (error.code === 11000) {
       return NextResponse.json(
         { error: 'User with this email already exists' },

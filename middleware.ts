@@ -6,7 +6,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/landing', '/api/auth/login', '/api/auth/register']
+  const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/verify-email', '/landing', '/api/auth/login', '/api/auth/register', '/api/auth/verify-email']
   const isPublicRoute = publicRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
   // If accessing a public route, allow it

@@ -357,7 +357,10 @@ export default function ChatPage() {
                 <Italic className="h-4 w-4" />
               </button>
               <button
-                onClick={() => editorRef.current?.setLink()}
+                onClick={() => {
+                  const url = window.prompt("Enter URL:")
+                  if (url) editorRef.current?.setLink(url)
+                }}
                 className="p-1.5 rounded hover:bg-gray-100 text-[#6B7280] transition-colors"
                 title="Link"
               >

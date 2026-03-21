@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       email: user.email,
       role: user.role,
       institution: user.institution,
-      isApproved: user.isApproved,
+      isEmailVerified: user.isEmailVerified,
     }
 
     return NextResponse.json({ user: userData })

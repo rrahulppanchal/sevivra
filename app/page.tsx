@@ -1,7 +1,6 @@
 "use client"
 
-import { Search, Bell, Sparkles, Settings, UserPlus, FileText } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Plus, MessageCircle, Compass, FolderOpen, Clock, Users, ArrowRight, FileText, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
@@ -13,36 +12,24 @@ import { useRouter } from "next/navigation"
 interface Project {
   _id: string
   title: string
+  description: string
   users: string[]
   updatedAt?: string
+  type?: string
   status?: "Under Development" | "Under Review" | "Submitted"
 }
 
-interface Notification {
-  id: string
-  type: "comment" | "invite" | "export"
-  avatar?: string
-  initials: string
-  avatarColor?: string
-  content: string
-  time: string
-  icon?: React.ReactNode
+const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
+  "Under Development": { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
+  "Under Review": { bg: "bg-blue-50 dark:bg-blue-500/10", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
+  "Submitted": { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" },
 }
 
-interface NetworkActivity {
-  id: string
-  name: string
-  initials: string
-  avatarColor: string
-  activity: string
-  time: string
-}
-
-interface SuggestedProject {
-  id: string
-  title: string
-  owner: string
-  tags: string[]
+const typeIcons: Record<string, string> = {
+  "Journal Articles": "JA",
+  "Conference Papers": "CP",
+  "Books & Chapters": "BC",
+  "Preprints": "PP",
 }
 
 export default function HomePage() {
@@ -52,87 +39,8 @@ export default function HomePage() {
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [projectsError, setProjectsError] = useState<string | null>(null)
 
-  const notifications: Notification[] = [
-    {
-      id: "1",
-      type: "comment",
-      initials: "RG",
-      avatarColor: "bg-indigo-500",
-      content: "Rahul having left a comment on Quantum Entanglement",
-      time: "15 mins ago",
-    },
-    {
-      id: "2",
-      type: "invite",
-      initials: "",
-      icon: <UserPlus className="h-4 w-4" />,
-      avatarColor: "bg-blue-100 text-blue-600",
-      content: "Collaboration invite from Dr. John Doe",
-      time: "2 hours ago",
-    },
-    {
-      id: "3",
-      type: "export",
-      initials: "",
-      icon: <FileText className="h-4 w-4" />,
-      avatarColor: "bg-orange-100 text-[#F26419]",
-      content: "Your manuscript 'Neuro-symbolic AI' was successfully exported",
-      time: "5 hours ago",
-    },
-  ]
-
-  const networkActivities: NetworkActivity[] = [
-    {
-      id: "1",
-      name: "Adam Eves",
-      initials: "AE",
-      avatarColor: "bg-teal-500",
-      activity: "started a new project",
-      time: "1 hour ago",
-    },
-    {
-      id: "2",
-      name: "Dr. Sarah Lee",
-      initials: "SL",
-      avatarColor: "bg-pink-500",
-      activity: "published a new paper in Nature Neuroscience",
-      time: "4 hours ago",
-    },
-    {
-      id: "3",
-      name: "Ava Chen",
-      initials: "AC",
-      avatarColor: "bg-emerald-500",
-      activity: "posted a new collaboration opportunity",
-      time: "Yesterday",
-    },
-  ]
-
-  const suggestedProjects: SuggestedProject[] = [
-    {
-      id: "1",
-      title: "Molecular Dynamics Simulation",
-      owner: "Dr. Elena Rossi",
-      tags: ["Biological Systems", "Computation"],
-    },
-    {
-      id: "2",
-      title: "Swarm Intelligence in Robotics",
-      owner: "Prof. Alan Grant",
-      tags: ["Robotics", "Algorithms", "AI"],
-    },
-    {
-      id: "3",
-      title: "Neuromorphic Computing Hardware",
-      owner: "Dr. Sarah Connors",
-      tags: ["Hardware", "Neural Networks"],
-    },
-  ]
-
   useEffect(() => {
-    if (!user) {
-      return
-    }
+    if (!user) return
 
     const fetchProjects = async () => {
       try {
@@ -161,233 +69,209 @@ export default function HomePage() {
     }
   }, [loading, router, user])
 
-  const topProjects = useMemo(() => projects.slice(0, 3), [projects])
+  const topProjects = useMemo(() => projects.slice(0, 4), [projects])
 
   const formatUpdatedAt = (value?: string) => {
-    if (!value) {
-      return "Unknown"
-    }
+    if (!value) return "Unknown"
     const date = new Date(value)
-    if (Number.isNaN(date.getTime())) {
-      return "Unknown"
-    }
+    if (Number.isNaN(date.getTime())) return "Unknown"
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    if (diffDays === 0) return "Today"
+    if (diffDays === 1) return "Yesterday"
+    if (diffDays < 7) return `${diffDays} days ago`
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
   }
 
   if (loading || !user) {
-    return null
+    return (
+      <div className="min-h-screen bg-[#F5F1E6] dark:bg-[#1A1A1A] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#1DA619]" />
+      </div>
+    )
   }
 
+  const firstName = user.name?.split(" ")[0] || "Researcher"
+
   return (
-    <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] h-screen font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] font-sans transition-colors duration-200">
       <Header />
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative scroll-smooth">
-        <div className="max-w-7xl mx-auto px-8 py-10">
-          <header className="mb-10 flex justify-between items-end">
-            <div>
-              <h1 className="text-3xl lg:text-4xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB] mb-2">
-                <span className="bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent">Welcome</span>{" "}
-                {user?.name || "Researcher"}
-              </h1>
-            </div>
-          </header>
 
-          {/* Projects Section */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">Projects</h2>
-              <Link href="/projects" className="text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
-                View All
-              </Link>
-            </div>
-            <div className="bg-white dark:bg-[#262626] rounded-2xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
-              {projectsLoading && (
-                <div className="p-5 text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading projects...</div>
-              )}
-              {!projectsLoading && projectsError && (
-                <div className="p-5 text-sm text-red-500">{projectsError}</div>
-              )}
-              {!projectsLoading && !projectsError && topProjects.length === 0 && (
-                <div className="p-1">
-                  <div className="mx-auto max-w-md rounded-2xl px-6 py-10 text-center shadow-none">
-                    <h3 className="text-xl font-semibold text-[#1F2937] dark:text-[#E5E7EB]">No Projects Yet</h3>
-                    <p className="mt-2 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                      Create your first project to start collaborating.
-                    </p>
-                    <div className="mt-6">
-                      <Link href="/projects">
-                        <Button className="h-10 rounded-full">
-                          + Create Project
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!projectsLoading &&
-                !projectsError &&
-                topProjects.map((project, index) => (
-                  <Link
-                    key={project._id}
-                    href={`/projects/${project._id}`}
-                    className={cn(
-                      "block p-5 hover:bg-gray-50 dark:hover:bg-[#262626]/50 transition-colors group",
-                      index < topProjects.length - 1 && "border-b border-[#E5E0D4] dark:border-[#404040]"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <h3 className="font-medium text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors">
-                            {project.title}
-                          </h3>
-                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5">
-                            Updated {formatUpdatedAt(project.updatedAt)} • {project.users?.length || 0} Collaborator
-                            {(project.users?.length || 0) !== 1 ? "s" : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#F5F1E6] text-stone-600 border border-[#E5E0D4] dark:bg-stone-800 dark:text-stone-300 dark:border-stone-700 whitespace-nowrap">
-                        {project.status || "Under Development"}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-            </div>
-          </div>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#1F2937] dark:text-[#E5E7EB]">
+            Welcome back, <span className="bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent">{firstName}</span>
+          </h1>
+          <p className="mt-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Here&apos;s what&apos;s happening with your research
+          </p>
+        </div>
 
-          {/* Notifications and Network Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-            {/* Notifications */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">Notifications</h2>
-                <Link href="#" className="text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
-                  View All
-                </Link>
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+          <Link href="/projects" className="group">
+            <div className="flex items-center gap-4 p-4 bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] hover:border-[#1DA619]/40 hover:shadow-md transition-all">
+              <div className="h-11 w-11 rounded-lg bg-[#1DA619]/10 flex items-center justify-center group-hover:bg-[#1DA619]/20 transition-colors">
+                <Plus className="h-5 w-5 text-[#1DA619]" />
               </div>
-              <div className="bg-white dark:bg-[#262626] rounded-2xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] p-2 flex-1">
-                {notifications.map((notification, index) => (
-                  <div
-                    key={notification.id}
-                    className={cn(
-                      "p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start",
-                      index < notifications.length - 1 && "border-b border-gray-50 dark:border-gray-800 mb-0"
-                    )}
-                  >
-                    <div className={cn("h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0", notification.avatarColor)}>
-                      {notification.icon ? (
-                        notification.icon
-                      ) : (
-                        <span className="text-white font-bold text-xs">{notification.initials}</span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        {notification.type === "comment" ? (
-                          <>
-                            <span className="font-semibold">{notification.initials === "RG" ? "Rahul" : ""}</span> having left a comment on{" "}
-                            <span className="font-medium text-[#1DA619]">Quantum Entanglement</span>
-                          </>
-                        ) : (
-                          notification.content
-                        )}
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">{notification.time}</p>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <p className="font-semibold text-sm text-[#1F2937] dark:text-[#E5E7EB]">New Project</p>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Start a new manuscript</p>
               </div>
             </div>
+          </Link>
 
-            {/* New in Your Network */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">New in Your Network</h2>
-                <Link href="#" className="text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
-                  View All
-                </Link>
+          <Link href="/chat" className="group">
+            <div className="flex items-center gap-4 p-4 bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] hover:border-[#F26419]/40 hover:shadow-md transition-all">
+              <div className="h-11 w-11 rounded-lg bg-[#F26419]/10 flex items-center justify-center group-hover:bg-[#F26419]/20 transition-colors">
+                <MessageCircle className="h-5 w-5 text-[#F26419]" />
               </div>
-              <div className="bg-white dark:bg-[#262626] rounded-2xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] p-2 flex-1">
-                {networkActivities.map((activity, index) => (
-                  <div
-                    key={activity.id}
-                    className={cn(
-                      "p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start",
-                      index < networkActivities.length - 1 && "border-b border-gray-50 dark:border-gray-800 mb-0"
-                    )}
-                  >
-                    <div className={cn("h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0", activity.avatarColor)}>
-                      {activity.initials}
-                    </div>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        <span className="font-semibold">{activity.name}</span> {activity.activity}
-                        {activity.name === "Dr. Sarah Lee" && (
-                          <>
-                            {" "}in <span className="italic">Nature Neuroscience</span>
-                          </>
-                        )}
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <p className="font-semibold text-sm text-[#1F2937] dark:text-[#E5E7EB]">AI Chat</p>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Get manuscript feedback</p>
               </div>
             </div>
-          </div>
+          </Link>
 
-          {/* Explore Projects Section */}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-4">
+          <Link href="/explore" className="group">
+            <div className="flex items-center gap-4 p-4 bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] hover:border-blue-400/40 hover:shadow-md transition-all">
+              <div className="h-11 w-11 rounded-lg bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                <Compass className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-[#1F2937] dark:text-[#E5E7EB]">Explore</p>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Discover collaborations</p>
+              </div>
+            </div>
+          </Link>
+        </div>
+
+        {/* Projects Section */}
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#F26419]" />
-              <Link href="/explore" className="text-lg font-semibold text-[#F26419] hover:text-orange-600 transition-colors">
-                Explore Projects
+              <FolderOpen className="h-5 w-5 text-[#1DA619]" />
+              <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">Your Projects</h2>
+              {!projectsLoading && !projectsError && projects.length > 0 && (
+                <span className="text-xs bg-[#1DA619]/10 text-[#1DA619] px-2 py-0.5 rounded-full font-medium">
+                  {projects.length}
+                </span>
+              )}
+            </div>
+            {projects.length > 0 && (
+              <Link href="/projects" className="flex items-center gap-1 text-sm font-medium text-[#F26419] hover:text-orange-600 transition-colors">
+                View All
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
-              <span className="text-xs bg-[#1DA619]/10 text-[#1DA619] px-2 py-0.5 rounded ml-2 font-medium">
-                Suggested by Gemini
-              </span>
+            )}
+          </div>
+
+          {projectsLoading && (
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-12 flex flex-col items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#1DA619] mb-3" />
+              <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading your projects...</p>
+            </div>
+          )}
+
+          {!projectsLoading && projectsError && (
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-red-200 dark:border-red-500/20 p-6">
+              <p className="text-sm text-red-600 dark:text-red-400">{projectsError}</p>
+            </div>
+          )}
+
+          {!projectsLoading && !projectsError && topProjects.length === 0 && (
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-12 text-center">
+              <div className="h-16 w-16 rounded-full bg-[#F5F1E6] dark:bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
+                <FileText className="h-7 w-7 text-[#6B7280]" />
               </div>
-              <Link href="/explore">
-                <Button
-                  size="sm"
-                  variant="link"
-                  className="text-[#F26419] cursor-pointer"
-                >
-                  View All
+              <h3 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-1">No projects yet</h3>
+              <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-5 max-w-sm mx-auto">
+                Create your first project to start writing and collaborating on manuscripts.
+              </p>
+              <Link href="/projects">
+                <Button className="bg-[#1DA619] hover:bg-[#158514] text-white rounded-lg px-5">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Project
                 </Button>
               </Link>
             </div>
-            <div className="flex flex-col gap-4">
-              {suggestedProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href="/explore"
-                  className="bg-white dark:bg-[#262626] p-4 rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] hover:shadow-md transition-shadow cursor-pointer flex flex-col sm:flex-row gap-5 items-start"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-[#1F2937] dark:text-[#E5E7EB] text-lg mb-1 truncate">{project.title}</h3>
-                    <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3">
-                      Owner: <span className="font-medium text-[#1F2937] dark:text-[#E5E7EB]">{project.owner}</span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {project.tags.map((tag, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-1 rounded-md bg-[#F5F1E6] dark:bg-[#262626] border border-[#E5E0D4] dark:border-[#404040] text-xs text-[#6B7280] dark:text-[#9CA3AF] font-medium"
-                        >
-                          {tag}
-                        </span>
-                      ))}
+          )}
+
+          {!projectsLoading && !projectsError && topProjects.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {topProjects.map((project) => {
+                const status = project.status || "Under Development"
+                const config = statusConfig[status] || statusConfig["Under Development"]
+                const typeLabel = typeIcons[project.type || ""] || "PR"
+
+                return (
+                  <Link
+                    key={project._id}
+                    href={`/projects/${project._id}`}
+                    className="group bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-5 hover:border-[#1DA619]/30 hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="h-10 w-10 rounded-lg bg-[#F5F1E6] dark:bg-[#1A1A1A] border border-[#E5E0D4] dark:border-[#404040] flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs font-bold text-[#6B7280] dark:text-[#9CA3AF]">{typeLabel}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors truncate">
+                          {project.title}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="flex items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            <Clock className="h-3 w-3" />
+                            {formatUpdatedAt(project.updatedAt)}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            <Users className="h-3 w-3" />
+                            {project.users?.length || 0}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium", config.bg, config.text)}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
+                            {status}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Stats Bar */}
+        {!projectsLoading && !projectsError && projects.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-4 text-center">
+              <p className="text-2xl font-bold text-[#1DA619]">{projects.length}</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">Total Projects</p>
+            </div>
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-4 text-center">
+              <p className="text-2xl font-bold text-amber-500">
+                {projects.filter((p) => (p.status || "Under Development") === "Under Development").length}
+              </p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">In Progress</p>
+            </div>
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-4 text-center">
+              <p className="text-2xl font-bold text-blue-500">
+                {projects.filter((p) => p.status === "Under Review").length}
+              </p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">Under Review</p>
+            </div>
+            <div className="bg-white dark:bg-[#262626] rounded-xl border border-[#E5E0D4] dark:border-[#404040] p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-500">
+                {projects.filter((p) => p.status === "Submitted").length}
+              </p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">Submitted</p>
             </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   )

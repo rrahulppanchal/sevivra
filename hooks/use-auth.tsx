@@ -10,7 +10,7 @@ interface User {
   email: string
   role: 'super_admin' | 'user'
   institution?: string
-  isApproved: boolean
+  isEmailVerified: boolean
 }
 
 interface AuthContextType {
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       throw new Error(data.error || 'Registration failed')
     }
 
-    // After registration, user is not logged in (pending approval)
+    // After registration, user is not logged in (needs email verification)
     setUser(null)
   }
 

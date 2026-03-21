@@ -23,7 +23,28 @@ const buildPrompt = (
   manuscriptTitle?: string,
   references: string[] = [],
   mode: string = "writing",
+  spreadsheetData?: string,
 ) => {
+  if (spreadsheetData) {
+    return [
+      "You are a data analysis assistant embedded in a spreadsheet editor.",
+      "Return ONLY valid JSON.",
+      "Always include: reply (string) — a human-readable explanation of what you did or found.",
+      "If the user asks you to modify, populate, or fill spreadsheet data, include spreadsheetUpdates: an array of { row: number (0-indexed), col: string (column letter), value: string }.",
+      "If you are adding new rows beyond the current data, include addRows: number (how many rows to add).",
+      "If no changes are needed, set spreadsheetUpdates to null.",
+      "If the user asks to create a chart or visualize data, include chartConfig: { type: 'bar'|'line'|'area'|'pie', title: string, xAxis: string (column letter for X axis), yAxis: string[] (column letters for Y axis/values) }.",
+      "You can include both spreadsheetUpdates AND chartConfig in a single response if the user asks to both modify data and create a chart.",
+      "Do NOT include updatedContent or replacements.",
+      "",
+      "Current spreadsheet data (tab-separated):",
+      spreadsheetData,
+      "",
+      "User command:",
+      message,
+    ].join("\n")
+  }
+
   return [
     "You are an academic writing assistant embedded in a manuscript editor.",
     "Return ONLY valid JSON.",
@@ -65,6 +86,7 @@ export async function POST(request: Request) {
       : []
     const imageData = typeof body?.imageData === "string" ? body.imageData : undefined
     const imageMimeType = typeof body?.imageMimeType === "string" ? body.imageMimeType : undefined
+    const spreadsheetDataStr = typeof body?.spreadsheetData === "string" ? body.spreadsheetData : undefined
 
     if (!message.trim() && !imageData && references.length === 0) {
       return NextResponse.json({ error: "Message, references, or image is required." }, { status: 400 })
@@ -107,7 +129,7 @@ export async function POST(request: Request) {
         {
           role: "user",
           parts: [
-            { text: buildPrompt(promptMessage, documentContent, manuscriptTitle, references, mode) },
+            { text: buildPrompt(promptMessage, documentContent, manuscriptTitle, references, mode, spreadsheetDataStr) },
             ...(imageData
               ? [
                   {
@@ -153,9 +175,11 @@ export async function POST(request: Request) {
     let reply = text
     let updatedContent: string | null = null
     let replacements: Array<{ original: string; replacement: string }> | null = null
+    let spreadsheetUpdates: Array<{ row: number; col: string; value: string }> | null = null
+    let addRows: number | null = null
+    let chartConfig: { type?: string; title?: string; xAxis?: string; yAxis?: string[] } | null = null
 
-    try {
-      const result = JSON.parse(text)
+    const extractFromResult = (result: any) => {
       reply = typeof result.reply === "string" ? result.reply : reply
       updatedContent = typeof result.updatedContent === "string" ? result.updatedContent : null
       if (Array.isArray(result.replacements)) {
@@ -163,20 +187,32 @@ export async function POST(request: Request) {
           .filter((item: any) => item && typeof item.original === "string" && typeof item.replacement === "string")
           .map((item: any) => ({ original: item.original, replacement: item.replacement }))
       }
+      if (Array.isArray(result.spreadsheetUpdates)) {
+        spreadsheetUpdates = result.spreadsheetUpdates
+          .filter((item: any) => item && typeof item.row === "number" && typeof item.col === "string" && typeof item.value === "string")
+          .map((item: any) => ({ row: item.row, col: item.col, value: item.value }))
+      }
+      if (typeof result.addRows === "number" && result.addRows > 0) {
+        addRows = result.addRows
+      }
+      if (result.chartConfig && typeof result.chartConfig === "object") {
+        chartConfig = {
+          type: typeof result.chartConfig.type === "string" ? result.chartConfig.type : undefined,
+          title: typeof result.chartConfig.title === "string" ? result.chartConfig.title : undefined,
+          xAxis: typeof result.chartConfig.xAxis === "string" ? result.chartConfig.xAxis : undefined,
+          yAxis: Array.isArray(result.chartConfig.yAxis) ? result.chartConfig.yAxis.filter((v: any) => typeof v === "string") : undefined,
+        }
+      }
+    }
+
+    try {
+      extractFromResult(JSON.parse(text))
     } catch {
       try {
         const jsonStart = text.indexOf("{")
         const jsonEnd = text.lastIndexOf("}")
         if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonText = text.slice(jsonStart, jsonEnd + 1)
-          const result = JSON.parse(jsonText)
-          reply = typeof result.reply === "string" ? result.reply : reply
-          updatedContent = typeof result.updatedContent === "string" ? result.updatedContent : null
-          if (Array.isArray(result.replacements)) {
-            replacements = result.replacements
-              .filter((item: any) => item && typeof item.original === "string" && typeof item.replacement === "string")
-              .map((item: any) => ({ original: item.original, replacement: item.replacement }))
-          }
+          extractFromResult(JSON.parse(text.slice(jsonStart, jsonEnd + 1)))
         }
       } catch {
         const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(text)
@@ -187,7 +223,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ reply, updatedContent, replacements })
+    return NextResponse.json({ reply, updatedContent, replacements, spreadsheetUpdates, addRows, chartConfig })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gemini request failed."
     return NextResponse.json({ error: message }, { status: 500 })

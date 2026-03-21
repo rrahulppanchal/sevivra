@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 
 export type UserRole = 'super_admin' | 'user'
 
@@ -9,12 +10,13 @@ export interface IUser extends Document {
   password: string
   role: UserRole
   institution?: string
-  isApproved: boolean
-  approvedAt?: Date
-  approvedBy?: mongoose.Types.ObjectId
+  isEmailVerified: boolean
+  emailVerificationToken?: string
+  emailVerificationExpires?: Date
   createdAt: Date
   updatedAt: Date
   comparePassword(candidatePassword: string): Promise<boolean>
+  generateVerificationToken(): string
 }
 
 const UserSchema: Schema = new Schema(
@@ -51,16 +53,17 @@ const UserSchema: Schema = new Schema(
       trim: true,
       maxlength: [200, 'Institution cannot exceed 200 characters'],
     },
-    isApproved: {
+    isEmailVerified: {
       type: Boolean,
       default: false,
     },
-    approvedAt: {
-      type: Date,
+    emailVerificationToken: {
+      type: String,
+      select: false,
     },
-    approvedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
+    emailVerificationExpires: {
+      type: Date,
+      select: false,
     },
   },
   {
@@ -71,7 +74,8 @@ const UserSchema: Schema = new Schema(
 // Create indexes
 UserSchema.index({ email: 1 })
 UserSchema.index({ role: 1 })
-UserSchema.index({ isApproved: 1 })
+UserSchema.index({ isEmailVerified: 1 })
+UserSchema.index({ emailVerificationToken: 1 })
 
 // Hash password before saving
 UserSchema.pre('save', async function (this: IUser) {
@@ -103,8 +107,20 @@ UserSchema.methods.comparePassword = async function (candidatePassword: string):
   return bcrypt.compare(candidatePassword, this.password)
 }
 
-const User: Model<IUser> =
-  mongoose.models.User || mongoose.model<IUser>('User', UserSchema)
+// Method to generate email verification token
+UserSchema.methods.generateVerificationToken = function (): string {
+  const token = crypto.randomBytes(32).toString('hex')
+  this.emailVerificationToken = crypto.createHash('sha256').update(token).digest('hex')
+  this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+  return token
+}
+
+// Delete cached model in dev to pick up schema changes on hot reload
+if (mongoose.models.User) {
+  delete mongoose.models.User
+}
+
+const User: Model<IUser> = mongoose.model<IUser>('User', UserSchema)
 
 export default User
 

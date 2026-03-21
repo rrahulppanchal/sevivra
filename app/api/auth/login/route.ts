@@ -27,10 +27,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user is approved (super admin is always approved)
-    if (!user.isApproved && user.role !== 'super_admin') {
+    // Check if email is verified (super admin bypasses this)
+    if (!user.isEmailVerified && user.role !== 'super_admin') {
       return NextResponse.json(
-        { error: 'Your account is pending approval from the administrator' },
+        { error: 'Please verify your email address before signing in. Check your inbox for the verification link.' },
         { status: 403 }
       )
     }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
       institution: user.institution,
-      isApproved: user.isApproved,
+      isEmailVerified: user.isEmailVerified,
     }
 
     const response = NextResponse.json({
