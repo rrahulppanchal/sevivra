@@ -45,7 +45,12 @@ export async function GET(request: NextRequest) {
       email: user.email,
       role: user.role,
       institution: user.institution,
+      bio: user.bio || '',
+      degrees: user.degrees || '',
+      keywords: user.keywords || [],
+      links: user.links || [],
       isEmailVerified: user.isEmailVerified,
+      createdAt: user.createdAt,
     }
 
     return NextResponse.json({ user: userData })

@@ -4,7 +4,6 @@ import {
   Menu,
   Bell,
   User,
-  MessageCircle,
   Zap,
   Settings,
   LogOut,
@@ -23,13 +22,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
 
@@ -45,7 +44,6 @@ type NotificationItem = {
 const navigationItems = [
   { label: "Projects", href: "/projects", icon: Zap },
   { label: "Explore", href: "/explore", icon: Compass },
-  { label: "Chat", href: "/chat", icon: MessageCircle },
 ]
 
 const notificationIconMap = {
@@ -58,6 +56,7 @@ const notificationIconMap = {
 export function Header() {
   const { sidebarOpen, setSidebarOpen } = useLayout()
   const { user, logout } = useAuth()
+  const pathname = usePathname()
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const unreadCount = useMemo(
@@ -72,6 +71,11 @@ export function Header() {
       .join("")
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    return pathname.startsWith(href)
   }
 
   const handleLogout = async () => {
@@ -135,19 +139,18 @@ export function Header() {
     fetchNotifications()
   }, [user])
 
-  // Show max 5 notifications in the dropdown
   const previewNotifications = notifications.slice(0, 5)
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[#E5E0D4] bg-white/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[#e8e4dc] dark:border-[#222] bg-white/90 dark:bg-[#161616]/90 backdrop-blur-xl">
       <div className="flex h-14 items-center justify-between px-4 md:px-6 max-w-[1440px] mx-auto">
         {/* Left side */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden h-9 w-9 text-[#6B7280] hover:text-[#1F2937] hover:bg-[#F5F1E6]"
+            className="md:hidden h-9 w-9 text-gray-400 hover:text-gray-700 hover:bg-gray-50"
           >
             <Menu className="h-5 w-5" />
           </Button>
@@ -158,7 +161,7 @@ export function Header() {
               <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
               <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2" />
             </svg>
-            <span className="text-lg font-bold bg-gradient-to-r from-[#1DA619] to-[#2E7D32] bg-clip-text text-transparent">
+            <span className="text-lg font-bold text-[#1a1a1a] dark:text-white tracking-tight">
               Sevivra
             </span>
           </Link>
@@ -166,18 +169,17 @@ export function Header() {
           {/* Mobile Navigation Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="lg:hidden ml-1 h-8 text-[#6B7280] hover:text-[#1F2937] hover:bg-[#F5F1E6]">
+              <button className="lg:hidden ml-1 h-8 w-8 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors">
                 <ChevronDown className="h-4 w-4" />
-              </Button>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel className="text-xs text-[#9CA3AF] font-semibold uppercase tracking-wider">Navigation</DropdownMenuLabel>
-              <DropdownMenuSeparator />
               {navigationItems.map((item) => {
                 const Icon = item.icon
+                const active = isActive(item.href)
                 return (
                   <DropdownMenuItem key={item.label} asChild>
-                    <Link href={item.href} className="flex items-center">
+                    <Link href={item.href} className={cn("flex items-center", active && "text-[#1DA619] font-medium")}>
                       <Icon className="mr-2 h-4 w-4" />
                       <span>{item.label}</span>
                     </Link>
@@ -188,53 +190,57 @@ export function Header() {
           </DropdownMenu>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center ml-4">
-            <div className="flex items-center bg-[#F5F1E6]/60 rounded-lg p-0.5">
-              {navigationItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link key={item.label} href={item.href}>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-[#6B7280] hover:text-[#1F2937] hover:bg-white transition-all">
-                      <Icon className="h-3.5 w-3.5" />
-                      {item.label}
-                    </button>
-                  </Link>
-                )
-              })}
-            </div>
+          <nav className="hidden lg:flex items-center ml-6 gap-1">
+            {navigationItems.map((item) => {
+              const Icon = item.icon
+              const active = isActive(item.href)
+              return (
+                <Link key={item.label} href={item.href}>
+                  <button
+                    className={cn(
+                      "relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all",
+                      active
+                        ? "text-[#1DA619] bg-[#1DA619]/5"
+                        : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                </Link>
+              )
+            })}
           </nav>
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-1.5 md:gap-2">
+        <div className="flex items-center gap-1">
           {/* Notifications */}
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative h-9 w-9 text-[#6B7280] hover:text-[#1F2937] hover:bg-[#F5F1E6]">
+                <button className="relative h-9 w-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   <Bell className="h-[18px] w-[18px]" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] rounded-full bg-[#F26419] text-white text-[10px] font-bold flex items-center justify-center px-1 ring-2 ring-white">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-[#F26419] ring-2 ring-white dark:ring-[#161616]" />
                   )}
-                </Button>
+                </button>
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent align="end" className="w-[360px] sm:w-[400px] p-0 rounded-xl border-[#E5E0D4] shadow-xl shadow-black/8">
+              <DropdownMenuContent align="end" sideOffset={8} className="w-[360px] sm:w-[400px] p-0 rounded-xl border-gray-200 dark:border-[#333] shadow-xl">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E0D4]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-[#333]">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-[#1F2937]">Notifications</h3>
+                    <h3 className="text-[13px] font-semibold text-[#1a1a1a] dark:text-white">Notifications</h3>
                     {unreadCount > 0 && (
-                      <span className="h-5 min-w-5 rounded-full bg-[#F26419]/10 text-[#F26419] text-[11px] font-bold flex items-center justify-center px-1.5">
+                      <span className="h-5 min-w-5 rounded-full bg-[#F26419]/10 text-[#F26419] text-[10px] font-bold flex items-center justify-center px-1.5">
                         {unreadCount}
                       </span>
                     )}
                   </div>
                   <Link
                     href="/notifications"
-                    className="text-xs font-medium text-[#1DA619] hover:text-[#158514] transition-colors"
+                    className="text-[11px] font-medium text-[#1DA619] hover:text-[#158514] transition-colors"
                   >
                     View all
                   </Link>
@@ -244,17 +250,17 @@ export function Header() {
                 <div className="max-h-[360px] overflow-y-auto">
                   {notificationsLoading && (
                     <div className="flex items-center justify-center py-10">
-                      <div className="h-5 w-5 border-2 border-[#E5E0D4] border-t-[#1DA619] rounded-full animate-spin" />
+                      <div className="h-5 w-5 border-2 border-gray-200 border-t-[#1DA619] rounded-full animate-spin" />
                     </div>
                   )}
 
                   {!notificationsLoading && notifications.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-10 px-4">
-                      <div className="h-12 w-12 rounded-full bg-[#F5F1E6] flex items-center justify-center mb-3">
-                        <Bell className="h-5 w-5 text-[#9CA3AF]" />
+                      <div className="h-10 w-10 rounded-full bg-gray-50 dark:bg-[#222] flex items-center justify-center mb-2.5">
+                        <Bell className="h-4 w-4 text-gray-300" />
                       </div>
-                      <p className="text-sm font-medium text-[#6B7280]">All caught up!</p>
-                      <p className="text-xs text-[#9CA3AF] mt-0.5">No notifications right now</p>
+                      <p className="text-[13px] font-medium text-gray-500">All caught up!</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">No notifications right now</p>
                     </div>
                   )}
 
@@ -267,66 +273,59 @@ export function Header() {
                       <div
                         key={notification._id}
                         className={cn(
-                          "flex items-start gap-3 px-4 py-3 border-b border-[#F5F1E6] last:border-0 cursor-pointer transition-colors hover:bg-[#FAFAF7]",
+                          "flex items-start gap-3 px-4 py-3 border-b border-gray-50 dark:border-[#222] last:border-0 cursor-pointer transition-colors hover:bg-gray-50/50 dark:hover:bg-white/[0.02]",
                           isUnread && "bg-[#1DA619]/[0.02]"
                         )}
                         onClick={() => isUnread && handleNotificationStatus(notification._id, "read")}
                       >
-                        {/* Icon */}
-                        <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5", config.bg)}>
-                          <Icon className={cn("h-4 w-4", config.color)} />
+                        <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5", config.bg)}>
+                          <Icon className={cn("h-3.5 w-3.5", config.color)} />
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={cn("text-sm leading-snug", isUnread ? "font-semibold text-[#1F2937]" : "font-medium text-[#4B5563]")}>
+                            <p className={cn("text-[13px] leading-snug", isUnread ? "font-semibold text-[#1a1a1a] dark:text-white" : "font-medium text-gray-600 dark:text-gray-400")}>
                               {notification.title}
                             </p>
-                            {isUnread && <span className="h-2 w-2 rounded-full bg-[#1DA619] flex-shrink-0 mt-1.5" />}
+                            {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-[#1DA619] flex-shrink-0 mt-2" />}
                           </div>
-                          <p className="text-xs text-[#9CA3AF] mt-0.5 line-clamp-2 leading-relaxed">
+                          <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
                             {notification.message}
                           </p>
-                          <p className="text-[11px] text-[#C4BFB3] mt-1.5 font-medium">
+                          <p className="text-[10px] text-gray-300 mt-1.5 font-medium">
                             {formatTime(notification.createdAt)}
                           </p>
 
-                          {/* Collaboration request actions */}
                           {notification.type === "collaboration_request" && notification.status === "unread" && (
-                            <div className="mt-2.5 flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                className="h-7 px-3 text-xs bg-[#1DA619] text-white hover:bg-[#158514] rounded-md font-medium"
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                className="h-7 px-3 text-[11px] font-medium bg-[#1DA619] text-white hover:bg-[#158514] rounded-md transition-colors"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleNotificationStatus(notification._id, "accepted")
                                 }}
                               >
                                 Accept
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-3 text-xs border-[#E5E0D4] text-[#6B7280] hover:text-[#1F2937] rounded-md font-medium"
+                              </button>
+                              <button
+                                className="h-7 px-3 text-[11px] font-medium border border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-700 rounded-md transition-colors"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleNotificationStatus(notification._id, "declined")
                                 }}
                               >
                                 Decline
-                              </Button>
+                              </button>
                             </div>
                           )}
 
-                          {/* Status badges for acted-upon notifications */}
                           {notification.status === "accepted" && (
-                            <span className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                               <CheckCircle className="h-3 w-3" /> Accepted
                             </span>
                           )}
                           {notification.status === "declined" && (
-                            <span className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
                               <AlertCircle className="h-3 w-3" /> Declined
                             </span>
                           )}
@@ -336,12 +335,11 @@ export function Header() {
                   })}
                 </div>
 
-                {/* Footer */}
                 {!notificationsLoading && notifications.length > 5 && (
-                  <div className="border-t border-[#E5E0D4] px-4 py-2.5">
+                  <div className="border-t border-gray-100 dark:border-[#333] px-4 py-2.5">
                     <Link
                       href="/notifications"
-                      className="flex items-center justify-center gap-1.5 text-xs font-medium text-[#1DA619] hover:text-[#158514] transition-colors py-1"
+                      className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-[#1DA619] hover:text-[#158514] transition-colors py-1"
                     >
                       View all {notifications.length} notifications
                       <ArrowRight className="h-3 w-3" />
@@ -350,8 +348,8 @@ export function Header() {
                 )}
 
                 {!notificationsLoading && notifications.length > 0 && notifications.length <= 5 && (
-                  <div className="border-t border-[#E5E0D4] px-4 py-2">
-                    <p className="text-[11px] text-[#C4BFB3] text-center font-medium">
+                  <div className="border-t border-gray-100 dark:border-[#333] px-4 py-2">
+                    <p className="text-[10px] text-gray-300 text-center">
                       Notifications are auto-deleted after 30 days
                     </p>
                   </div>
@@ -360,79 +358,90 @@ export function Header() {
             </DropdownMenu>
           )}
 
+          {/* Divider */}
+          {user && <div className="h-5 w-px bg-gray-200 dark:bg-[#333] mx-1.5" />}
+
           {/* Profile */}
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2 px-1.5 h-9 hover:bg-[#F5F1E6] rounded-lg">
+                <button className="flex items-center gap-2.5 h-9 pl-1.5 pr-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   <Avatar className="h-7 w-7">
                     <AvatarImage src="/placeholder-user.jpg" alt={user.name} />
-                    <AvatarFallback className="bg-gradient-to-br from-[#1DA619] to-[#2E7D32] text-white text-xs font-bold">
+                    <AvatarFallback className="bg-[#1DA619] text-white text-[11px] font-bold">
                       {getUserInitials(user.name)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="hidden md:flex flex-col items-start">
-                    <span className="text-sm font-medium text-[#1F2937] leading-tight">{user.name}</span>
-                  </div>
-                  <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF] hidden md:block" />
-                </Button>
+                  <span className="hidden md:block text-[13px] font-medium text-[#1a1a1a] dark:text-[#eee] max-w-[120px] truncate">
+                    {user.name}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-gray-400 hidden md:block" />
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 rounded-xl border-[#E5E0D4] shadow-xl shadow-black/8">
-                <div className="px-3 py-3">
+              <DropdownMenuContent align="end" sideOffset={8} className="w-56 rounded-xl border-gray-200 dark:border-[#333] shadow-xl p-0 overflow-hidden">
+                {/* User info header */}
+                <div className="px-4 py-3.5 bg-gray-50/50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-[#333]">
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-9 w-9">
                       <AvatarImage src="/placeholder-user.jpg" alt={user.name} />
-                      <AvatarFallback className="bg-gradient-to-br from-[#1DA619] to-[#2E7D32] text-white text-sm font-bold">
+                      <AvatarFallback className="bg-[#1DA619] text-white text-[11px] font-bold">
                         {getUserInitials(user.name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[#1F2937] truncate">{user.name}</p>
-                      <p className="text-xs text-[#9CA3AF] truncate">{user.email}</p>
+                      <p className="text-[13px] font-semibold text-[#1a1a1a] dark:text-white truncate">{user.name}</p>
+                      <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
                     </div>
                   </div>
                 </div>
-                <DropdownMenuSeparator className="bg-[#E5E0D4]" />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem asChild className="py-2.5 px-3 cursor-pointer hover:bg-[#F5F1E6] focus:bg-[#F5F1E6]">
-                    <Link href="/profile" className="flex items-center">
-                      <User className="mr-2.5 h-4 w-4 text-[#6B7280]" />
-                      <span className="text-sm text-[#1F2937]">Profile</span>
-                    </Link>
+
+                {/* Menu items */}
+                <div className="py-1.5">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem asChild className="py-2 px-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 focus:bg-gray-50 dark:focus:bg-white/5 rounded-none">
+                      <Link href="/profile" className="flex items-center">
+                        <User className="mr-2.5 h-4 w-4 text-gray-400" />
+                        <span className="text-[13px] text-[#1a1a1a] dark:text-[#eee]">Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="py-2 px-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 focus:bg-gray-50 dark:focus:bg-white/5 rounded-none">
+                      <Link href="/notifications" className="flex items-center">
+                        <Bell className="mr-2.5 h-4 w-4 text-gray-400" />
+                        <span className="text-[13px] text-[#1a1a1a] dark:text-[#eee]">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="ml-auto h-5 min-w-5 rounded-full bg-[#F26419]/10 text-[#F26419] text-[10px] font-bold flex items-center justify-center px-1.5">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="py-2 px-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 focus:bg-gray-50 dark:focus:bg-white/5 rounded-none">
+                      <Link href="/" className="flex items-center">
+                        <Settings className="mr-2.5 h-4 w-4 text-gray-400" />
+                        <span className="text-[13px] text-[#1a1a1a] dark:text-[#eee]">Settings</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </div>
+
+                <DropdownMenuSeparator className="bg-gray-100 dark:bg-[#333] m-0" />
+
+                <div className="py-1.5">
+                  <DropdownMenuItem
+                    className="py-2 px-4 cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-500/5 focus:bg-red-50 dark:focus:bg-red-500/5 focus:text-red-500 rounded-none"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="mr-2.5 h-4 w-4" />
+                    <span className="text-[13px]">Log out</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="py-2.5 px-3 cursor-pointer hover:bg-[#F5F1E6] focus:bg-[#F5F1E6]">
-                    <Link href="/notifications" className="flex items-center">
-                      <Bell className="mr-2.5 h-4 w-4 text-[#6B7280]" />
-                      <span className="text-sm text-[#1F2937]">Notifications</span>
-                      {unreadCount > 0 && (
-                        <span className="ml-auto h-5 min-w-5 rounded-full bg-[#F26419]/10 text-[#F26419] text-[11px] font-bold flex items-center justify-center px-1.5">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="py-2.5 px-3 cursor-pointer hover:bg-[#F5F1E6] focus:bg-[#F5F1E6]">
-                    <Link href="/" className="flex items-center">
-                      <Settings className="mr-2.5 h-4 w-4 text-[#6B7280]" />
-                      <span className="text-sm text-[#1F2937]">Settings</span>
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator className="bg-[#E5E0D4]" />
-                <DropdownMenuItem
-                  className="py-2.5 px-3 cursor-pointer text-red-500 hover:bg-red-50 focus:bg-red-50 focus:text-red-500"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="mr-2.5 h-4 w-4" />
-                  <span className="text-sm">Log out</span>
-                </DropdownMenuItem>
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
             <Link href="/auth/signin">
-              <Button className="h-9 bg-[#1DA619] text-white hover:bg-[#158514] rounded-lg text-sm font-medium shadow-sm shadow-[#1DA619]/15">
+              <button className="h-9 px-4 bg-[#1DA619] text-white hover:bg-[#158514] rounded-lg text-[13px] font-medium shadow-sm transition-colors">
                 Sign in
-              </Button>
+              </button>
             </Link>
           )}
         </div>

@@ -680,18 +680,17 @@ export default function LandingPage() {
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF] mb-4">Resources</h4>
               <ul className="space-y-2.5">
-                <li><Link href="#" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Documentation</Link></li>
-                <li><Link href="#faq" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">FAQ</Link></li>
-                <li><Link href="#" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Blog</Link></li>
+                <li><Link href="/landing#faq" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">FAQ</Link></li>
+                <li><Link href="/contact" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Contact</Link></li>
               </ul>
             </div>
 
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF] mb-4">Legal</h4>
               <ul className="space-y-2.5">
-                <li><Link href="#" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Privacy Policy</Link></li>
-                <li><Link href="#" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Terms of Service</Link></li>
-                <li><Link href="#" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Contact</Link></li>
+                <li><Link href="/privacy" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Terms of Service</Link></li>
+                <li><Link href="/contact" className="text-sm text-[#6B7280] hover:text-[#1DA619] transition-colors">Contact</Link></li>
               </ul>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from "mongoose"
 
-export type NotificationType = "collaboration_request" | "info" | "success" | "warning"
+export type NotificationType = "collaboration_request" | "review_request" | "info" | "success" | "warning"
 export type NotificationStatus = "unread" | "read" | "accepted" | "declined"
 
 export interface INotification extends Document {
@@ -28,7 +28,7 @@ const NotificationSchema: Schema = new Schema(
     },
     type: {
       type: String,
-      enum: ["collaboration_request", "info", "success", "warning"],
+      enum: ["collaboration_request", "review_request", "info", "success", "warning"],
       required: true,
     },
     title: {

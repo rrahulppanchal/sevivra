@@ -10,7 +10,12 @@ interface User {
   email: string
   role: 'super_admin' | 'user'
   institution?: string
+  bio?: string
+  degrees?: string
+  keywords?: string[]
+  links?: { label: string; url: string }[]
   isEmailVerified: boolean
+  createdAt?: string
 }
 
 interface AuthContextType {

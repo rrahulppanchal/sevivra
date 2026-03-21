@@ -3,74 +3,146 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Header } from "@/components/layout/header"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle, ChevronLeft, Globe, Lock, Mail, Search, Send, Sparkles, User } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  ChevronLeft,
+  Clock,
+  Copy,
+  FileText,
+  Plus,
+  Search,
+  Send,
+  Sparkles,
+  Trash2,
+  User,
+  UserPlus,
+  X,
+} from "lucide-react"
+
+interface ReviewInvite {
+  id: string
+  email: string
+  name: string
+  isExistingUser: boolean
+  status: "pending" | "sent" | "error"
+}
+
+interface SearchedUser {
+  id: string
+  name: string
+  email: string
+  institution?: string
+}
 
 export default function PublishPage() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const projectId = typeof params?.id === "string" ? params.id : ""
   const manuscriptId = searchParams.get("manuscriptId") || ""
-  const [contentHtml, setContentHtml] = useState<string>("")
-  const [title, setTitle] = useState<string>("")
+
+  // Manuscript state
+  const [contentHtml, setContentHtml] = useState("")
+  const [title, setTitle] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+
+  // Publishing state
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishedId, setPublishedId] = useState<string | null>(null)
-  const [reviewSearch, setReviewSearch] = useState("")
-  const [reviewerName, setReviewerName] = useState("")
-  const [reviewerEmail, setReviewerEmail] = useState("")
+
+  // Analysis state
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analysisLines, setAnalysisLines] = useState<string[]>([])
-  const [analysisScore, setAnalysisScore] = useState(85)
+  const [analysisScore, setAnalysisScore] = useState<number | null>(null)
+
+  // Journal state
+  const [journal, setJournal] = useState("")
+
+  // Reviewer state
+  const [reviewerEmail, setReviewerEmail] = useState("")
+  const [reviewerName, setReviewerName] = useState("")
+  const [reviewInvites, setReviewInvites] = useState<ReviewInvite[]>([])
+  const [isSendingInvite, setIsSendingInvite] = useState(false)
+
+  // User search
+  const [userSearch, setUserSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchedUser[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+
+  // Checklist
   const checklistItems = [
-    "All authors have approved the final draft.",
-    "High-resolution figures uploaded.",
-    "Conflicts of interest statement declared.",
-    "Data availability statement provided.",
+    { label: "All authors have approved the final draft", key: "authors" },
+    { label: "High-resolution figures uploaded", key: "figures" },
+    { label: "Conflicts of interest declared", key: "conflicts" },
+    { label: "Data availability statement provided", key: "data" },
   ]
-  const [checklistCompletedCount, setChecklistCompletedCount] = useState(2)
-  const [journal, setJournal] = useState<string>("")
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({})
+  const checkedCount = Object.values(checkedItems).filter(Boolean).length
 
   const shareUrl = useMemo(() => {
     if (!publishedId || !projectId) return ""
+    if (typeof window === "undefined") return ""
     return `${window.location.origin}/projects/${projectId}/published/${publishedId}`
   }, [projectId, publishedId])
 
+  // Load manuscript content
   useEffect(() => {
     const loadContent = async () => {
-      if (!manuscriptId) {
-        setIsLoading(false)
-        return
-      }
+      if (!manuscriptId) { setIsLoading(false); return }
       try {
         setIsLoading(true)
         const response = await fetch(`/api/chat?manuscriptId=${encodeURIComponent(manuscriptId)}`)
         const result = await response.json()
-        if (!response.ok) {
-          throw new Error(result?.error || "Failed to load manuscript.")
-        }
-        const generated = result?.data?.generatedContent || ""
-        const html = generated || ""
-        setContentHtml(html)
-        if (result?.data?.manuscriptTitle) {
-          setTitle(result.data.manuscriptTitle)
-        }
+        if (!response.ok) throw new Error(result?.error || "Failed to load manuscript.")
+        setContentHtml(result?.data?.generatedContent || "")
+        if (result?.data?.manuscriptTitle) setTitle(result.data.manuscriptTitle)
       } catch (error) {
         console.error("Failed to load manuscript:", error)
       } finally {
         setIsLoading(false)
       }
     }
-
     loadContent()
   }, [manuscriptId])
+
+  // Search users
+  useEffect(() => {
+    const term = userSearch.trim()
+    if (term.length < 2) { setSearchResults([]); return }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setIsSearching(true)
+        const response = await fetch("/api/users")
+        const result = await response.json()
+        if (!response.ok) throw new Error("Failed to search users")
+        const users: SearchedUser[] = (result.data || [])
+          .filter((u: any) =>
+            u.id !== user?.id &&
+            (u.name?.toLowerCase().includes(term.toLowerCase()) ||
+              u.email?.toLowerCase().includes(term.toLowerCase()))
+          )
+          .slice(0, 5)
+        setSearchResults(users)
+      } catch {
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [userSearch, user?.id])
 
   const handlePublish = async () => {
     if (!projectId || !contentHtml) return
@@ -80,34 +152,18 @@ export default function PublishPage() {
       const response = await fetch("/api/published", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          manuscriptId: manuscriptId || undefined,
-          title: title || undefined,
-          contentHtml,
-        }),
+        body: JSON.stringify({ projectId, manuscriptId: manuscriptId || undefined, title: title || undefined, contentHtml }),
       })
       const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to publish document.")
-      }
-      if (result?.data?.id) {
-        setPublishedId(result.data.id)
-      }
+      if (!response.ok) throw new Error(result?.error || "Failed to publish.")
+      if (result?.data?.id) setPublishedId(result.data.id)
+      toast.success("Manuscript published successfully!")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to publish document."
-      setPublishError(message)
+      const msg = error instanceof Error ? error.message : "Failed to publish."
+      setPublishError(msg)
+      toast.error(msg)
     } finally {
       setIsPublishing(false)
-    }
-  }
-
-  const handleCopyLink = async () => {
-    if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-    } catch (error) {
-      console.error("Failed to copy link:", error)
     }
   }
 
@@ -120,221 +176,558 @@ export default function PublishPage() {
       const response = await fetch("/api/gemini/analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          documentContent: contentHtml,
-          model: "gemini-3-flash-preview",
-        }),
+        body: JSON.stringify({ title, documentContent: contentHtml, model: "gemini-3-flash-preview" }),
       })
       const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to analyze manuscript.")
-      }
-      const suggestionsText = typeof result?.suggestions === "string" ? result.suggestions : ""
-      const lines = suggestionsText
-        .split("\n")
-        .map((line: string) => line.replace(/^[\-\*\d\.\)\s]+/, "").trim())
-        .filter(Boolean)
-      setAnalysisResult(suggestionsText)
+      if (!response.ok) throw new Error(result?.error || "Analysis failed.")
+      const text = typeof result?.suggestions === "string" ? result.suggestions : ""
+      const lines = text.split("\n").map((l: string) => l.replace(/^[\-\*\d\.\)\s]+/, "").trim()).filter(Boolean)
       setAnalysisLines(lines)
-      const nextScore = Math.max(60, Math.min(95, 95 - lines.length * 2))
-      setAnalysisScore(nextScore)
-      const completedCount = Math.max(0, Math.min(checklistItems.length, Math.round((nextScore / 100) * checklistItems.length)))
-      setChecklistCompletedCount(completedCount)
+      setAnalysisScore(Math.max(60, Math.min(95, 95 - lines.length * 2)))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to analyze manuscript."
-      setAnalysisError(message)
+      setAnalysisError(error instanceof Error ? error.message : "Analysis failed.")
     } finally {
       setAnalysisLoading(false)
     }
   }
 
+  const handleCopyLink = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      toast.success("Link copied!")
+    } catch { /* ignore */ }
+  }
+
+  const handleSendInvite = async (email: string, name: string) => {
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      toast.error("Please enter a valid email address")
+      return
+    }
+
+    if (reviewInvites.some((inv) => inv.email.toLowerCase() === email.trim().toLowerCase())) {
+      toast.error("This reviewer has already been invited")
+      return
+    }
+
+    const inviteId = Date.now().toString()
+    const newInvite: ReviewInvite = {
+      id: inviteId,
+      email: email.trim().toLowerCase(),
+      name: name.trim(),
+      isExistingUser: false,
+      status: "pending",
+    }
+    setReviewInvites((prev) => [...prev, newInvite])
+    setIsSendingInvite(true)
+
+    try {
+      const response = await fetch("/api/review-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), name: name.trim(), projectId }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result?.error || "Failed to send invite")
+
+      setReviewInvites((prev) =>
+        prev.map((inv) =>
+          inv.id === inviteId
+            ? { ...inv, status: "sent", isExistingUser: result.isExistingUser ?? false }
+            : inv
+        )
+      )
+      toast.success(result.message || "Invitation sent!")
+      setReviewerEmail("")
+      setReviewerName("")
+      setUserSearch("")
+      setSearchResults([])
+    } catch (error: any) {
+      setReviewInvites((prev) =>
+        prev.map((inv) => (inv.id === inviteId ? { ...inv, status: "error" } : inv))
+      )
+      toast.error(error.message || "Failed to send invite")
+    } finally {
+      setIsSendingInvite(false)
+    }
+  }
+
+  const handleSelectUser = (u: SearchedUser) => {
+    handleSendInvite(u.email, u.name)
+  }
+
+  const removeInvite = (id: string) => {
+    setReviewInvites((prev) => prev.filter((inv) => inv.id !== id))
+  }
+
   return (
-    <div className="min-h-screen bg-[#F5F1E6] text-[#1F2937]">
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <Link href={`/projects/${projectId}`} className="text-sm text-[#6B7280] hover:text-[#1DA619] flex items-center gap-1">
-              <ChevronLeft className="h-4 w-4" />
-              Back to Editor
-            </Link>
+    <div className="min-h-screen bg-[#faf9f6] dark:bg-[#111] text-[#1a1a1a] dark:text-[#eee] flex flex-col">
+      <Header />
+
+      {/* Page header */}
+      <div className="w-full border-b border-[#e8e4dc] dark:border-[#222] bg-white dark:bg-[#161616]">
+        <div className="max-w-4xl mx-auto px-8 py-8">
+          <Link
+            href={`/projects/${projectId}`}
+            className="inline-flex items-center gap-1 text-[13px] text-gray-400 hover:text-[#1DA619] transition-colors mb-4"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back to project
+          </Link>
+          <div className="flex items-end justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight mb-1">Publish Manuscript</h1>
+              <p className="text-[13px] text-gray-500">
+                {title ? title : "Finalize and submit your manuscript for review"}
+              </p>
+            </div>
+            {!publishedId && (
+              <button
+                onClick={handlePublish}
+                disabled={isPublishing || isLoading || !contentHtml}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-lg bg-[#1DA619] text-white text-[13px] font-semibold hover:bg-[#158514] transition-all disabled:opacity-40 shadow-sm"
+              >
+                {isPublishing ? (
+                  <>
+                    <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Submit Manuscript
+                  </>
+                )}
+              </button>
+            )}
           </div>
-          <div className="text-xs text-[#6B7280]">Project ID: {projectId}</div>
+          {publishError && (
+            <p className="text-[12px] text-red-500 mt-2">{publishError}</p>
+          )}
         </div>
+      </div>
 
-        <div className="mb-12">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-[#1DA619] via-[#8FB319] to-[#F26419] bg-clip-text text-transparent pb-2">
-            Publish with Sevivra
-          </h1>
-          <p className="text-sm text-[#6B7280] mt-2 font-medium">
-            Finalize your manuscript for institutional and community review.
-          </p>
-        </div>
-
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-          <div className="lg:col-span-2 space-y-8">
-            <Card className="rounded-2xl p-8 border border-[#E5E0D4] shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold">Desk-Review Score</h2>
-                <span className="text-xs font-semibold bg-[#1DA619]/10 text-[#1DA619] px-3 py-1 rounded-full uppercase tracking-wider">
-                  AI Analysis Complete
-                </span>
+      <main className="max-w-4xl mx-auto px-8 py-8 w-full flex-1">
+        {/* Published success banner */}
+        {publishedId && (
+          <div className="mb-8 bg-[#1DA619]/5 border border-[#1DA619]/15 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-[#1DA619]/10 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="h-5 w-5 text-[#1DA619]" />
               </div>
-              <div className="flex items-end gap-6">
-                <div className="text-6xl font-bold text-[#1DA619]">{analysisScore}%</div>
-                <div className="flex-1 pb-2">
-                  <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#1DA619]" style={{ width: `${analysisScore}%` }} />
-                  </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[14px] font-semibold text-[#1DA619] mb-1">Manuscript Published</h3>
+                <p className="text-[12px] text-gray-500 break-all mb-3">{shareUrl}</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyLink}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#1DA619]/20 text-[#1DA619] text-[12px] font-medium hover:bg-[#1DA619]/5 transition-colors"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy link
+                  </button>
+                  <button
+                    onClick={() => router.push(`/projects/${projectId}/published/${publishedId}`)}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors"
+                  >
+                    <ArrowUpRight className="h-3 w-3" />
+                    View page
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-5 gap-6">
+          {/* Left column */}
+          <div className="col-span-3 space-y-6">
+            {/* AI Analysis */}
+            <section className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[#1DA619]" />
+                  <h2 className="text-[14px] font-semibold">Desk-Review Score</h2>
                 </div>
                 <button
                   onClick={handleAnalyze}
                   disabled={analysisLoading || !contentHtml}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:text-[#1DA619] hover:border-[#1DA619]/30 transition-colors disabled:opacity-40"
                 >
-                  {analysisLoading ? "Analyzing..." : "View Feedback"}
+                  {analysisLoading ? (
+                    <>
+                      <div className="h-3 w-3 border-2 border-gray-300 border-t-[#1DA619] rounded-full animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3 w-3" />
+                      {analysisScore !== null ? "Re-analyze" : "Run Analysis"}
+                    </>
+                  )}
                 </button>
               </div>
-              <p className="mt-4 text-sm text-[#6B7280] leading-relaxed">
-                {analysisLines.length > 0
-                  ? analysisLines.join(" ")
-                  : "Your manuscript has a high probability of passing the initial editorial check. We recommend addressing the minor citation formatting flagged in the feedback before submission."}
-              </p>
-            </Card>
-
-            <Card className="rounded-2xl p-8 border border-[#E5E0D4] shadow-sm">
-              <h2 className="text-lg font-bold mb-6">Select Your Sevivra Journal</h2>
-              <Select value={journal} onValueChange={setJournal}>
-                <SelectTrigger className="data-[size=default]:h-14 h-14 w-full bg-[#F5F1E6] border border-[#E5E0D4] px-4 text-sm focus:ring-[#1DA619] focus:border-[#1DA619]">
-                  <SelectValue placeholder="Choose a journal" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  <SelectItem value="ai-scientific-discovery">
-                    Sevivra Journal of Artificial Intelligence & Scientific Discovery
-                  </SelectItem>
-                  <SelectItem value="computational-data-driven">
-                    Sevivra Journal of Computational & Data-Driven Science
-                  </SelectItem>
-                  <SelectItem value="interdisciplinary-research">
-                    Sevivra Journal of Interdisciplinary Research
-                  </SelectItem>
-                  <SelectItem value="methods-protocols-reproducibility">
-                    Sevivra Journal of Methods, Protocols & Reproducibility
-                  </SelectItem>
-                  <SelectItem value="biomedical-health-intelligence">
-                    Sevivra Journal of Biomedical & Health Intelligence
-                  </SelectItem>
-                  <SelectItem value="sustainable-systems-climate">
-                    Sevivra Journal of Sustainable Systems & Climate Science
-                  </SelectItem>
-                  <SelectItem value="human-centered-computing-ethics">
-                    Sevivra Journal of Human-Centered Computing & Ethics
-                  </SelectItem>
-                  <SelectItem value="engineering-systems-innovation">
-                    Sevivra Journal of Engineering, Systems & Applied Innovation
-                  </SelectItem>
-                  <SelectItem value="open-science-knowledge-systems">
-                    Sevivra Journal of Open Science & Knowledge Systems
-                  </SelectItem>
-                  <SelectItem value="emerging-frontier-research">
-                    Sevivra Journal of Emerging & Frontier Research
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </Card>
-
-            <Card className="rounded-2xl p-8 border border-[#E5E0D4] shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold">Peer-Review</h2>
-                <span className="text-xs text-[#6B7280] italic">Suggest reviewers from the community</span>
+              <div className="p-5">
+                {analysisScore !== null ? (
+                  <>
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="text-4xl font-bold text-[#1DA619]">{analysisScore}%</div>
+                      <div className="flex-1">
+                        <div className="h-2 w-full bg-gray-100 dark:bg-[#222] rounded-full overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full transition-all duration-500", analysisScore >= 80 ? "bg-[#1DA619]" : analysisScore >= 60 ? "bg-[#F26419]" : "bg-red-500")}
+                            style={{ width: `${analysisScore}%` }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {analysisScore >= 80 ? "High probability of passing editorial check" : "Some improvements recommended"}
+                        </p>
+                      </div>
+                    </div>
+                    {analysisLines.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Suggestions</p>
+                        <ul className="space-y-1.5">
+                          {analysisLines.slice(0, 6).map((line, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[12px] text-gray-600 dark:text-gray-400 leading-relaxed">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#F26419] flex-shrink-0 mt-1.5" />
+                              {line}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-6">
+                    <div className="h-10 w-10 rounded-xl bg-gray-50 dark:bg-[#222] flex items-center justify-center mx-auto mb-3">
+                      <Sparkles className="h-5 w-5 text-gray-300" />
+                    </div>
+                    <p className="text-[13px] text-gray-500 mb-1">No analysis yet</p>
+                    <p className="text-[11px] text-gray-400">Run AI analysis to get feedback on your manuscript</p>
+                  </div>
+                )}
+                {analysisError && <p className="text-[11px] text-red-500 mt-3">{analysisError}</p>}
               </div>
-              <div className="space-y-4">
-                <div className="">
-                  <div className="relative w-full">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm"><Search className="w-4 h-4" /></span>
+            </section>
+
+            {/* Journal Selection */}
+            <section className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#f0ece4] dark:border-[#222] flex items-center gap-2">
+                <FileText className="h-4 w-4 text-gray-400" />
+                <h2 className="text-[14px] font-semibold">Target Journal</h2>
+              </div>
+              <div className="p-5">
+                <Select value={journal} onValueChange={setJournal}>
+                  <SelectTrigger className="w-full h-10 text-[13px] data-[size=default]:h-10">
+                    <SelectValue placeholder="Select a journal..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ai-scientific-discovery">AI & Scientific Discovery</SelectItem>
+                    <SelectItem value="computational-data-driven">Computational & Data-Driven Science</SelectItem>
+                    <SelectItem value="interdisciplinary-research">Interdisciplinary Research</SelectItem>
+                    <SelectItem value="methods-protocols-reproducibility">Methods, Protocols & Reproducibility</SelectItem>
+                    <SelectItem value="biomedical-health-intelligence">Biomedical & Health Intelligence</SelectItem>
+                    <SelectItem value="sustainable-systems-climate">Sustainable Systems & Climate Science</SelectItem>
+                    <SelectItem value="human-centered-computing-ethics">Human-Centered Computing & Ethics</SelectItem>
+                    <SelectItem value="engineering-systems-innovation">Engineering, Systems & Applied Innovation</SelectItem>
+                    <SelectItem value="open-science-knowledge-systems">Open Science & Knowledge Systems</SelectItem>
+                    <SelectItem value="emerging-frontier-research">Emerging & Frontier Research</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </section>
+
+            {/* Peer Review - Request Reviewers */}
+            <section className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-gray-400" />
+                  <h2 className="text-[14px] font-semibold">Request Reviews</h2>
+                </div>
+                <span className="text-[11px] text-gray-400">{reviewInvites.filter((i) => i.status === "sent").length} invited</span>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Search existing users */}
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
+                    Search platform users
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                     <Input
-                      value={reviewSearch}
-                      onChange={(event) => setReviewSearch(event.target.value)}
-                      placeholder="Search platform members..."
-                      className="pl-10 h-14 bg-[#F5F1E6] border border-[#E5E0D4]"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      placeholder="Search by name or email..."
+                      className="pl-9 h-10 text-[13px]"
                     />
                   </div>
+                  {searchResults.length > 0 && (
+                    <div className="mt-2 border border-gray-200 dark:border-[#333] rounded-lg divide-y divide-gray-100 dark:divide-[#333] overflow-hidden">
+                      {searchResults.map((u) => {
+                        const alreadyInvited = reviewInvites.some((inv) => inv.email === u.email)
+                        return (
+                          <button
+                            key={u.id}
+                            onClick={() => !alreadyInvited && handleSelectUser(u)}
+                            disabled={alreadyInvited || isSendingInvite}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                              alreadyInvited
+                                ? "opacity-50 cursor-not-allowed bg-gray-50/50"
+                                : "hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                            )}
+                          >
+                            <div className="h-8 w-8 rounded-full bg-[#1DA619]/10 flex items-center justify-center flex-shrink-0">
+                              <User className="h-3.5 w-3.5 text-[#1DA619]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-medium truncate">{u.name}</p>
+                              <p className="text-[11px] text-gray-400 truncate">{u.email}{u.institution ? ` · ${u.institution}` : ""}</p>
+                            </div>
+                            {alreadyInvited ? (
+                              <span className="text-[10px] text-gray-400 font-medium">Invited</span>
+                            ) : (
+                              <Plus className="h-3.5 w-3.5 text-gray-400" />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {isSearching && (
+                    <div className="flex items-center gap-2 mt-2 px-1">
+                      <div className="h-3 w-3 border-2 border-gray-200 border-t-[#1DA619] rounded-full animate-spin" />
+                      <span className="text-[11px] text-gray-400">Searching...</span>
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-0">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm"><User className="w-4 h-4" /></span>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-[#333]" />
+                  <span className="text-[10px] text-gray-400 font-medium uppercase">or invite by email</span>
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-[#333]" />
+                </div>
+
+                {/* Invite external reviewer */}
+                <div className="grid grid-cols-5 gap-2">
+                  <div className="col-span-2">
                     <Input
                       value={reviewerName}
-                      onChange={(event) => setReviewerName(event.target.value)}
-                      placeholder="Full Name"
-                      className="pl-10 h-14 bg-[#F5F1E6] border border-[#E5E0D4]"
+                      onChange={(e) => setReviewerName(e.target.value)}
+                      placeholder="Name (optional)"
+                      className="h-10 text-[13px]"
                     />
                   </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm"><Mail className="w-4 h-4" /></span>
+                  <div className="col-span-2">
                     <Input
                       value={reviewerEmail}
-                      onChange={(event) => setReviewerEmail(event.target.value)}
-                      placeholder="Academic Email"
+                      onChange={(e) => setReviewerEmail(e.target.value)}
+                      placeholder="reviewer@email.com"
                       type="email"
-                      className="pl-10 h-14 bg-[#F5F1E6] border border-[#E5E0D4]"
+                      className="h-10 text-[13px]"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSendInvite(reviewerEmail, reviewerName) } }}
                     />
                   </div>
+                  <button
+                    onClick={() => handleSendInvite(reviewerEmail, reviewerName)}
+                    disabled={isSendingInvite || !reviewerEmail.trim()}
+                    className="h-10 flex items-center justify-center gap-1.5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40"
+                  >
+                    {isSendingInvite ? (
+                      <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="h-3 w-3" />
+                        Send
+                      </>
+                    )}
+                  </button>
                 </div>
-                <div className="flex justify-center pt-2">
-                  <Button variant="outline" className="h-14 border-[#1DA619]/20 text-[#1DA619] hover:border-[#1DA619]/50 bg-white px-8 py-3">
-                    Request Review
-                  </Button>
-                </div>
+
+                {/* Invited reviewers list */}
+                {reviewInvites.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invited Reviewers</p>
+                    <div className="space-y-1">
+                      {reviewInvites.map((invite) => (
+                        <div
+                          key={invite.id}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50/50 dark:bg-white/[0.02] border border-gray-100 dark:border-[#333]"
+                        >
+                          <div className={cn(
+                            "h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0",
+                            invite.status === "sent" ? "bg-[#1DA619]/10" : invite.status === "error" ? "bg-red-50 dark:bg-red-500/10" : "bg-gray-100 dark:bg-[#222]"
+                          )}>
+                            {invite.status === "sent" ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-[#1DA619]" />
+                            ) : invite.status === "error" ? (
+                              <X className="h-3.5 w-3.5 text-red-500" />
+                            ) : (
+                              <Clock className="h-3.5 w-3.5 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[12px] font-medium truncate">
+                                {invite.name || invite.email}
+                              </p>
+                              {invite.isExistingUser && (
+                                <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#1DA619]/8 text-[#1DA619] border border-[#1DA619]/15">
+                                  Member
+                                </span>
+                              )}
+                              {!invite.isExistingUser && invite.status === "sent" && (
+                                <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#F26419]/8 text-[#F26419] border border-[#F26419]/15">
+                                  External
+                                </span>
+                              )}
+                            </div>
+                            {invite.name && <p className="text-[10px] text-gray-400 truncate">{invite.email}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "text-[10px] font-medium",
+                              invite.status === "sent" ? "text-[#1DA619]" : invite.status === "error" ? "text-red-500" : "text-gray-400"
+                            )}>
+                              {invite.status === "sent" ? "Sent" : invite.status === "error" ? "Failed" : "Sending..."}
+                            </span>
+                            {invite.status !== "pending" && (
+                              <button
+                                onClick={() => removeInvite(invite.id)}
+                                className="h-6 w-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </Card>
+            </section>
           </div>
 
-          <div className="space-y-6">
-            <Card className="bg-white rounded-2xl p-6 border border-[#E5E0D4] shadow-sm sticky top-24">
-              <h3 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-4">Submission Checklist</h3>
-              <ul className="space-y-4 text-sm">
-                {checklistItems.map((item, index) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <span
-                      className={`mt-0.5 h-4 w-4 rounded-full border-2 ${
-                        index < checklistCompletedCount ? "border-[#1DA619] bg-[#1DA619]" : "border-[#6B7280]"
-                      }`}
-                    />
-                    <span>{item}</span>
+          {/* Right column — sidebar */}
+          <div className="col-span-2 space-y-6">
+            {/* Submission checklist */}
+            <div className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] p-5 sticky top-20">
+              <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                Submission Checklist
+              </h3>
+              <ul className="space-y-3">
+                {checklistItems.map((item) => (
+                  <li key={item.key}>
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={!!checkedItems[item.key]}
+                        onChange={() => setCheckedItems((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
+                        className="h-4 w-4 mt-0.5 rounded border-gray-300 dark:border-[#444] text-[#1DA619] focus:ring-[#1DA619]/20 focus:ring-offset-0"
+                      />
+                      <span className={cn(
+                        "text-[13px] leading-snug transition-colors",
+                        checkedItems[item.key] ? "text-gray-400 line-through" : "text-gray-700 dark:text-gray-300"
+                      )}>
+                        {item.label}
+                      </span>
+                    </label>
                   </li>
                 ))}
               </ul>
-            </Card>
-          </div>
-        </section>
 
-        <div className="flex flex-col items-end gap-12 mt-16 pt-8 border-t border-[#E5E0D4]">
-          <Button
-            className="px-12 py-4 bg-[#1DA619] hover:bg-green-700 text-white rounded-2xl font-bold text-lg transition-all shadow-lg hover:shadow-[#1DA619]/20 flex items-center gap-3"
-            onClick={handlePublish}
-            disabled={isPublishing || isLoading || !contentHtml}
-          >
-            Submit Manuscript
-            <Send className="h-5 w-5" />
-          </Button>
-          {publishError && <p className="text-xs text-red-500">{publishError}</p>}
-          {publishedId && (
-            <div className="w-full space-y-2 rounded-md border border-[#E5E0D4] bg-white p-3 text-xs">
-              <div className="text-[#1F2937] font-semibold">Shareable link</div>
-              <div className="break-all text-[#6B7280]">{shareUrl}</div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCopyLink}>
-                  Copy link
-                </Button>
-                <Button size="sm" onClick={() => router.push(`/projects/${projectId}/published/${publishedId}`)}>
-                  View page
-                </Button>
+              <div className="mt-5 pt-4 border-t border-gray-100 dark:border-[#333]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-gray-400">Progress</span>
+                  <span className="text-[11px] font-medium text-gray-600 dark:text-gray-400">{checkedCount}/{checklistItems.length}</span>
+                </div>
+                <div className="h-1.5 w-full bg-gray-100 dark:bg-[#222] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#1DA619] rounded-full transition-all duration-300"
+                    style={{ width: `${(checkedCount / checklistItems.length) * 100}%` }}
+                  />
+                </div>
               </div>
             </div>
-          )}
+
+            {/* Status info */}
+            <div className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] p-5">
+              <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Status</h3>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Manuscript</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    contentHtml
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {isLoading ? "Loading..." : contentHtml ? "Ready" : "Not loaded"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Analysis</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    analysisScore !== null
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {analysisScore !== null ? `${analysisScore}%` : "Not run"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Journal</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    journal
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {journal ? "Selected" : "Not selected"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Reviewers</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    reviewInvites.filter((i) => i.status === "sent").length > 0
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {reviewInvites.filter((i) => i.status === "sent").length || "None"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Checklist</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    checkedCount === checklistItems.length
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {checkedCount}/{checklistItems.length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Published</span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    publishedId
+                      ? "bg-[#1DA619]/8 text-[#1DA619]"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-400"
+                  )}>
+                    {publishedId ? "Yes" : "No"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

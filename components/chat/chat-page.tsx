@@ -1486,109 +1486,86 @@ export default function ChatPage() {
       <Dialog open={showLinkModal} onOpenChange={setShowLinkModal}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/5 flex items-center justify-center ring-1 ring-blue-500/10">
-                <LinkIcon className="h-4 w-4 text-blue-600" />
-              </div>
+            <DialogTitle className="flex items-center gap-2">
+              <LinkIcon className="h-4 w-4 text-blue-500" />
               Insert Link
             </DialogTitle>
-            <DialogDescription>
-              Add a URL to link the selected text.
-            </DialogDescription>
+            <DialogDescription>Add a URL to link the selected text.</DialogDescription>
           </DialogHeader>
-          <div className="px-6 py-3 space-y-3">
+          <div className="space-y-3 px-6">
             <div>
-              <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5 block">URL</label>
-              <Input
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://example.com"
-                className="font-mono text-sm h-10 rounded-xl border-[#E5E0D4] bg-white focus:ring-2 focus:ring-[#1DA619]/15 focus:border-[#1DA619]/40"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && linkUrl.trim()) {
-                    editorRef.current?.setLink(linkUrl.trim())
-                    setShowLinkModal(false)
-                    setLinkUrl("")
-                  }
-                }}
-                autoFocus
-              />
+              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">URL</label>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300" />
+                <Input
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="font-mono text-[13px] h-10 pl-9"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && linkUrl.trim()) {
+                      editorRef.current?.setLink(linkUrl.trim())
+                      setShowLinkModal(false)
+                      setLinkUrl("")
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
             </div>
             {linkUrl && !/^https?:\/\//i.test(linkUrl) && linkUrl.length > 3 && (
-              <p className="text-[11px] text-amber-600 flex items-center gap-1.5 bg-amber-50 rounded-lg px-3 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+              <p className="text-[11px] text-amber-600 flex items-center gap-1.5">
+                <span className="h-4 w-4 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-amber-600">!</span>
                 URL should start with https:// or http://
               </p>
             )}
           </div>
-          <div className="border-t border-[#E5E0D4]/60" />
-          <DialogFooter className="flex-row gap-2 sm:justify-between">
-            <div>
-              {editorRef.current?.getLink() && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    editorRef.current?.removeLink()
-                    setShowLinkModal(false)
-                    setLinkUrl("")
-                  }}
-                  className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 h-9 text-xs rounded-xl"
-                >
-                  Remove Link
-                </Button>
-              )}
-            </div>
+          <div className="flex items-center justify-between px-6 pb-5 pt-2">
+            {editorRef.current?.getLink() ? (
+              <button onClick={() => { editorRef.current?.removeLink(); setShowLinkModal(false); setLinkUrl("") }} className="text-[12px] font-medium text-red-500 hover:text-red-600 transition-colors">
+                Remove link
+              </button>
+            ) : <div />}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setShowLinkModal(false); setLinkUrl("") }} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+              <button onClick={() => { setShowLinkModal(false); setLinkUrl("") }} className="h-9 px-4 text-[12px] font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
                 Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (linkUrl.trim()) {
-                    editorRef.current?.setLink(linkUrl.trim())
-                    setShowLinkModal(false)
-                    setLinkUrl("")
-                  }
-                }}
+              </button>
+              <button
+                onClick={() => { if (linkUrl.trim()) { editorRef.current?.setLink(linkUrl.trim()); setShowLinkModal(false); setLinkUrl("") } }}
                 disabled={!linkUrl.trim()}
-                className="bg-[#1DA619] hover:bg-[#189415] h-9 text-xs rounded-xl shadow-sm"
+                className="h-9 px-4 text-[12px] font-medium rounded-lg bg-[#1DA619] hover:bg-[#158514] text-white shadow-sm disabled:opacity-40 transition-colors"
               >
                 Apply Link
-              </Button>
+              </button>
             </div>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* LaTeX Insert Dialog */}
       <Dialog open={showLatexDialog !== null} onOpenChange={(open) => { if (!open) setShowLatexDialog(null) }}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#1DA619]/10 to-[#1DA619]/5 flex items-center justify-center ring-1 ring-[#1DA619]/10">
-                {showLatexDialog === "inline" ? <Sigma className="h-4 w-4 text-[#1DA619]" /> : <Radical className="h-4 w-4 text-[#1DA619]" />}
-              </div>
-              Insert {showLatexDialog === "inline" ? "Inline" : "Block"} Math
+            <DialogTitle className="flex items-center gap-2">
+              {showLatexDialog === "inline" ? <Sigma className="h-4 w-4 text-[#1DA619]" /> : <Radical className="h-4 w-4 text-purple-500" />}
+              {showLatexDialog === "inline" ? "Inline Math" : "Block Math"}
             </DialogTitle>
             <DialogDescription>
-              {showLatexDialog === "inline" ? "Inline math appears within your text flow." : "Block math renders on its own centered line."}
+              {showLatexDialog === "inline" ? "Renders within your text flow" : "Renders on its own centered line"}
             </DialogDescription>
           </DialogHeader>
-          <div className="px-6 py-3 space-y-4">
+          <div className="px-6 space-y-4">
             <div>
-              <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5 block">LaTeX Expression</label>
+              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">LaTeX Expression</label>
               <Input
                 value={latexInput}
                 onChange={(e) => setLatexInput(e.target.value)}
                 placeholder={showLatexDialog === "inline" ? "e.g. E = mc^2" : "e.g. \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"}
-                className="font-mono text-sm h-10 rounded-xl border-[#E5E0D4] bg-white focus:ring-2 focus:ring-[#1DA619]/15 focus:border-[#1DA619]/40"
+                className="font-mono text-[13px] h-10"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && latexInput.trim()) {
-                    if (showLatexDialog === "inline") {
-                      editorRef.current?.insertInlineMath(latexInput.trim())
-                    } else {
-                      editorRef.current?.insertBlockMath(latexInput.trim())
-                    }
+                    if (showLatexDialog === "inline") editorRef.current?.insertInlineMath(latexInput.trim())
+                    else editorRef.current?.insertBlockMath(latexInput.trim())
                     setShowLatexDialog(null)
                     setLatexInput("")
                   }
@@ -1596,8 +1573,8 @@ export default function ChatPage() {
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">Quick insert</p>
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Quick Insert</p>
               <div className="flex flex-wrap gap-1.5">
                 {(showLatexDialog === "inline"
                   ? ["x^2", "\\frac{a}{b}", "\\sqrt{x}", "\\alpha", "\\int_0^1", "F = ma"]
@@ -1607,10 +1584,10 @@ export default function ChatPage() {
                     key={example}
                     onClick={() => setLatexInput(example)}
                     className={cn(
-                      "px-2.5 py-1.5 rounded-lg border text-[11px] font-mono transition-all",
+                      "px-2.5 py-1.5 rounded-md border text-[10px] font-mono transition-all",
                       latexInput === example
-                        ? "bg-[#1DA619]/10 border-[#1DA619]/25 text-[#1DA619]"
-                        : "bg-white border-[#E5E0D4] text-[#6B7280] hover:bg-[#1DA619]/5 hover:border-[#1DA619]/20 hover:text-[#1DA619]"
+                        ? "bg-[#1DA619]/5 border-[#1DA619]/30 text-[#1DA619]"
+                        : "bg-gray-50 border-gray-200 text-gray-500 hover:border-[#1DA619]/20 hover:text-[#1DA619]"
                     )}
                   >
                     {example}
@@ -1619,61 +1596,59 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-          <div className="border-t border-[#E5E0D4]/60" />
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowLatexDialog(null); setLatexInput("") }} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+            <button onClick={() => { setShowLatexDialog(null); setLatexInput("") }} className="h-9 px-4 text-[12px] font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
               Cancel
-            </Button>
-            <Button
+            </button>
+            <button
               onClick={() => {
                 if (latexInput.trim()) {
-                  if (showLatexDialog === "inline") {
-                    editorRef.current?.insertInlineMath(latexInput.trim())
-                  } else {
-                    editorRef.current?.insertBlockMath(latexInput.trim())
-                  }
+                  if (showLatexDialog === "inline") editorRef.current?.insertInlineMath(latexInput.trim())
+                  else editorRef.current?.insertBlockMath(latexInput.trim())
                   setShowLatexDialog(null)
                   setLatexInput("")
                 }
               }}
               disabled={!latexInput.trim()}
-              className="bg-[#1DA619] hover:bg-[#189415] h-9 text-xs rounded-xl shadow-sm"
+              className="h-9 px-4 text-[12px] font-medium rounded-lg bg-[#1DA619] hover:bg-[#158514] text-white shadow-sm disabled:opacity-40 transition-colors"
             >
               Insert Math
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showPublishModal} onOpenChange={setShowPublishModal}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#1DA619]/10 to-[#1DA619]/5 flex items-center justify-center ring-1 ring-[#1DA619]/10">
-                <LinkIcon className="h-4 w-4 text-[#1DA619]" />
+        <DialogContent className="sm:max-w-[440px] gap-0">
+          <div className="bg-gradient-to-r from-[#1DA619] to-emerald-600 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <LinkIcon className="h-5 w-5 text-white" />
               </div>
-              Shareable Link
-            </DialogTitle>
-            <DialogDescription>Your manuscript is published. Copy and share the link below.</DialogDescription>
-          </DialogHeader>
-          <div className="px-6 py-3 space-y-3">
-            <div className="rounded-xl border border-[#E5E0D4] bg-white px-4 py-3 text-xs font-mono break-all text-[#1F2937]">
+              <div>
+                <h3 className="text-[15px] font-semibold text-white">Published!</h3>
+                <p className="text-xs text-white/75">Your manuscript is live. Share the link below.</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-5 space-y-3">
+            <label className="text-xs font-medium text-[#374151] block">Shareable Link</label>
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs font-mono break-all text-[#374151] select-all">
               {publishedLink ? `${publishedLink}` : "No link available"}
             </div>
           </div>
-          <div className="border-t border-[#E5E0D4]/60" />
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCopyPublishedLink} disabled={!publishedLink} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+          <div className="px-6 pb-5 flex justify-end gap-2.5">
+            <Button variant="outline" onClick={handleCopyPublishedLink} disabled={!publishedLink} className="h-9 px-4 text-xs rounded-xl border-gray-200 hover:bg-gray-50">
               Copy link
             </Button>
             <Button
               onClick={() => publishedLink && router.push(publishedLink)}
               disabled={!publishedLink}
-              className="bg-[#1DA619] text-white hover:bg-[#158514] h-9 text-xs rounded-xl shadow-sm"
+              className="bg-[#1DA619] text-white hover:bg-[#158514] h-9 px-5 text-xs rounded-xl shadow-sm"
             >
               View page
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
       <Dialog
@@ -1686,39 +1661,49 @@ export default function ChatPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>New Manuscript</DialogTitle>
-            <DialogDescription>Create a new manuscript under this project.</DialogDescription>
-          </DialogHeader>
-          <div className="px-6 py-3 space-y-2">
-            <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider block">Title</label>
-            <Input
-              value={newManuscriptTitle}
-              onChange={(event) => setNewManuscriptTitle(event.target.value)}
-              placeholder={`Manuscript ${manuscripts.length + 1}`}
-              className="h-10 rounded-xl border-[#E5E0D4] bg-white focus:ring-2 focus:ring-[#1DA619]/15 focus:border-[#1DA619]/40"
-            />
+        <DialogContent className="sm:max-w-[440px] gap-0">
+          <div className="bg-gradient-to-r from-[#1DA619] to-emerald-600 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-white">New Manuscript</h3>
+                <p className="text-xs text-white/75">Create a new manuscript under this project</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-5 space-y-3">
+            <div>
+              <label className="text-xs font-medium text-[#374151] mb-2 block">Title</label>
+              <Input
+                value={newManuscriptTitle}
+                onChange={(event) => setNewManuscriptTitle(event.target.value)}
+                placeholder={`Manuscript ${manuscripts.length + 1}`}
+                className="h-11 rounded-xl border-gray-200 bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
+              />
+            </div>
             {manuscriptActionError && (
-              <p className="text-[11px] text-red-500 flex items-center gap-1.5 bg-red-50 rounded-lg px-3 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
-                {manuscriptActionError}
-              </p>
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-100">
+                <div className="h-5 w-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-red-600 text-[10px] font-bold">!</span>
+                </div>
+                <p className="text-xs text-red-700">{manuscriptActionError}</p>
+              </div>
             )}
           </div>
-          <div className="border-t border-[#E5E0D4]/60" />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateManuscriptOpen(false)} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+          <div className="px-6 pb-5 flex justify-end gap-2.5">
+            <Button variant="outline" onClick={() => setIsCreateManuscriptOpen(false)} className="h-9 px-4 text-xs rounded-xl border-gray-200 hover:bg-gray-50">
               Cancel
             </Button>
             <Button
               onClick={handleCreateManuscript}
               disabled={isCreatingManuscript || manuscriptsLoading}
-              className="bg-[#1DA619] text-white hover:bg-[#158514] h-9 text-xs rounded-xl shadow-sm"
+              className="bg-[#1DA619] text-white hover:bg-[#158514] h-9 px-5 text-xs rounded-xl shadow-sm disabled:opacity-40"
             >
               {isCreatingManuscript ? "Creating..." : "Create Manuscript"}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
       <Dialog
@@ -1730,29 +1715,41 @@ export default function ChatPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>Collaborators</DialogTitle>
-            <DialogDescription>Invite people to collaborate on this project.</DialogDescription>
-          </DialogHeader>
-          <div className="px-6 py-3 space-y-3">
-            <Input
-              value={collaboratorSearch}
-              onChange={(event) => setCollaboratorSearch(event.target.value)}
-              placeholder="Search users by name or email"
-              className="h-10 rounded-xl border-[#E5E0D4] bg-white focus:ring-2 focus:ring-[#1DA619]/15 focus:border-[#1DA619]/40"
-            />
+        <DialogContent className="sm:max-w-[460px] gap-0">
+          <div className="bg-gradient-to-r from-indigo-500 to-blue-600 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-white">Collaborators</h3>
+                <p className="text-xs text-white/75">Invite people to collaborate on this project</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-5 space-y-3">
+            <div className="relative">
+              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="m21 21-4.35-4.35" /></svg>
+              <Input
+                value={collaboratorSearch}
+                onChange={(event) => setCollaboratorSearch(event.target.value)}
+                placeholder="Search users by name or email"
+                className="h-11 pl-10 rounded-xl border-gray-200 bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
+              />
+            </div>
             {collaboratorsError && (
-              <p className="text-[11px] text-red-500 flex items-center gap-1.5 bg-red-50 rounded-lg px-3 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
-                {collaboratorsError}
-              </p>
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-100">
+                <div className="h-5 w-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-red-600 text-[10px] font-bold">!</span>
+                </div>
+                <p className="text-xs text-red-700">{collaboratorsError}</p>
+              </div>
             )}
-            <div className="max-h-64 overflow-y-auto rounded-xl border border-[#E5E0D4] bg-white divide-y divide-[#E5E0D4]/50">
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
               {collaboratorsLoading ? (
-                <div className="px-4 py-3 text-xs text-[#6B7280]">Loading users...</div>
+                <div className="px-4 py-6 text-xs text-[#6B7280] text-center">Loading users...</div>
               ) : filteredUsers.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-[#6B7280]">No users found.</div>
+                <div className="px-4 py-6 text-xs text-[#6B7280] text-center">No users found.</div>
               ) : (
                 filteredUsers.map((userOption) => {
                   const isCurrentUser = user?.id === userOption.id
@@ -1761,39 +1758,39 @@ export default function ChatPage() {
                     <label
                       key={userOption.id}
                       className={cn(
-                        "flex items-center gap-3 px-4 py-3 text-sm cursor-pointer transition-colors",
-                        isChecked ? "bg-[#1DA619]/[0.03]" : "hover:bg-[#F5F1E6]/50"
+                        "flex items-center gap-3 px-4 py-3.5 text-sm cursor-pointer transition-all",
+                        isChecked ? "bg-indigo-50/50" : "hover:bg-gray-50"
                       )}
                     >
                       <Checkbox
                         checked={isChecked}
                         onCheckedChange={() => toggleCollaborator(userOption.id)}
                         disabled={isCurrentUser}
-                        className="data-[state=checked]:bg-[#1DA619] data-[state=checked]:border-[#1DA619]"
+                        className="data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
                       />
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-[#1F2937]">{userOption.name}</span>
+                        <span className="text-sm font-medium text-[#111827]">{userOption.name}</span>
                         <span className="text-[11px] text-[#9CA3AF]">{userOption.email}</span>
                       </div>
+                      {isCurrentUser && <span className="ml-auto text-[10px] text-[#9CA3AF] font-medium">(You)</span>}
                     </label>
                   )
                 })
               )}
             </div>
           </div>
-          <div className="border-t border-[#E5E0D4]/60" />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCollaboratorsOpen(false)} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+          <div className="px-6 pb-5 flex justify-end gap-2.5">
+            <Button variant="outline" onClick={() => setIsCollaboratorsOpen(false)} className="h-9 px-4 text-xs rounded-xl border-gray-200 hover:bg-gray-50">
               Cancel
             </Button>
             <Button
               onClick={handleSaveCollaborators}
               disabled={collaboratorsSaving || collaboratorsLoading}
-              className="bg-[#1DA619] text-white hover:bg-[#158514] h-9 text-xs rounded-xl shadow-sm"
+              className="bg-indigo-600 text-white hover:bg-indigo-700 h-9 px-5 text-xs rounded-xl shadow-sm disabled:opacity-40"
             >
               {collaboratorsSaving ? "Saving..." : "Save Collaborators"}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
       <ChatHeader
@@ -2849,23 +2846,23 @@ export default function ChatPage() {
 
               {/* Chart Builder Dialog */}
               <Dialog open={showChartBuilder} onOpenChange={setShowChartBuilder}>
-                <DialogContent className="sm:max-w-[460px]">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2.5">
-                      <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#F26419]/10 to-[#F26419]/5 flex items-center justify-center ring-1 ring-[#F26419]/10">
-                        <PieChart className="h-4 w-4 text-[#F26419]" />
+                <DialogContent className="sm:max-w-[480px] gap-0">
+                  <div className="bg-gradient-to-r from-[#F26419] to-amber-500 px-6 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                        <PieChart className="h-5 w-5 text-white" />
                       </div>
-                      Create Chart
-                    </DialogTitle>
-                    <DialogDescription>
-                      Visualize your spreadsheet data. Select chart type and columns.
-                    </DialogDescription>
-                  </DialogHeader>
+                      <div>
+                        <h3 className="text-[15px] font-semibold text-white">Create Chart</h3>
+                        <p className="text-xs text-white/75">Visualize your spreadsheet data</p>
+                      </div>
+                    </div>
+                  </div>
 
-                  <div className="px-6 py-3 space-y-4">
+                  <div className="px-6 py-5 space-y-5">
                     {/* Chart Type */}
                     <div>
-                      <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2 block">Chart Type</label>
+                      <label className="text-xs font-medium text-[#374151] mb-2.5 block">Chart Type</label>
                       <div className="grid grid-cols-4 gap-2">
                         {chartTypeOptions.map((opt) => {
                           const Icon = opt.icon
@@ -2874,10 +2871,10 @@ export default function ChatPage() {
                               key={opt.id}
                               onClick={() => setChartBuilderType(opt.id)}
                               className={cn(
-                                "flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all",
+                                "flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all",
                                 chartBuilderType === opt.id
-                                  ? "border-[#F26419] bg-[#F26419]/5 text-[#F26419]"
-                                  : "border-[#E5E0D4] text-[#6B7280] hover:border-[#F26419]/30"
+                                  ? "border-[#F26419] bg-[#F26419]/5 text-[#F26419] shadow-sm"
+                                  : "border-gray-100 text-[#6B7280] hover:border-[#F26419]/30 hover:bg-orange-50/30"
                               )}
                             >
                               <Icon className="h-5 w-5" />
@@ -2890,22 +2887,23 @@ export default function ChatPage() {
 
                     {/* Chart Title */}
                     <div>
-                      <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5 block">Title</label>
+                      <label className="text-xs font-medium text-[#374151] mb-2 block">Title</label>
                       <Input
                         value={chartBuilderTitle}
                         onChange={(e) => setChartBuilderTitle(e.target.value)}
                         placeholder="e.g., Monthly Revenue"
-                        className="text-sm h-10 rounded-xl border-[#E5E0D4] bg-white focus:ring-2 focus:ring-[#F26419]/15 focus:border-[#F26419]/40"
+                        className="text-sm h-11 rounded-xl border-gray-200 bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-[#F26419]/15 focus:border-[#F26419]/40 transition-all"
                       />
                     </div>
 
                     {/* X Axis */}
                     <div>
-                      <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5 block">
-                        {chartBuilderType === "pie" ? "Labels Column" : "X-Axis Column"} (categories)
+                      <label className="text-xs font-medium text-[#374151] mb-2 block">
+                        {chartBuilderType === "pie" ? "Labels Column" : "X-Axis Column"}
+                        <span className="text-[#9CA3AF] font-normal ml-1">(categories)</span>
                       </label>
                       <Select value={chartBuilderXAxis} onValueChange={setChartBuilderXAxis}>
-                        <SelectTrigger className="text-sm border-[#E5E0D4]">
+                        <SelectTrigger className="text-sm border-gray-200 h-11 rounded-xl">
                           <SelectValue placeholder="Select column..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -2921,8 +2919,9 @@ export default function ChatPage() {
 
                     {/* Y Axis */}
                     <div>
-                      <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5 block">
-                        {chartBuilderType === "pie" ? "Values Column" : "Y-Axis Columns"} (numeric data)
+                      <label className="text-xs font-medium text-[#374151] mb-2 block">
+                        {chartBuilderType === "pie" ? "Values Column" : "Y-Axis Columns"}
+                        <span className="text-[#9CA3AF] font-normal ml-1">(numeric data)</span>
                       </label>
                       <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
                         {Object.keys(spreadsheetData[0] || {}).sort()
@@ -2931,8 +2930,8 @@ export default function ChatPage() {
                             <label
                               key={col}
                               className={cn(
-                                "flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors",
-                                chartBuilderYAxis.includes(col) ? "border-[#F26419]/30 bg-[#F26419]/5" : "border-[#E5E0D4] hover:bg-[#F5F1E6]/50"
+                                "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all",
+                                chartBuilderYAxis.includes(col) ? "border-[#F26419]/30 bg-orange-50 shadow-sm" : "border-gray-200 hover:bg-gray-50"
                               )}
                             >
                               <Checkbox
@@ -2948,7 +2947,7 @@ export default function ChatPage() {
                                 }}
                                 className="data-[state=checked]:bg-[#F26419] data-[state=checked]:border-[#F26419]"
                               />
-                              <span className="text-sm text-[#1F2937]">
+                              <span className="text-sm text-[#374151]">
                                 Column {col}
                                 {spreadsheetData[0]?.[col] ? ` — "${spreadsheetData[0][col]}"` : ""}
                               </span>
@@ -2956,25 +2955,24 @@ export default function ChatPage() {
                           ))}
                       </div>
                       {chartBuilderType === "pie" && (
-                        <p className="text-[10px] text-[#9CA3AF] mt-1">Pie charts use a single value column.</p>
+                        <p className="text-[10px] text-[#9CA3AF] mt-1.5">Pie charts use a single value column.</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="border-t border-[#E5E0D4]/60" />
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowChartBuilder(false)} className="h-9 text-xs rounded-xl border-[#E5E0D4]">
+                  <div className="px-6 pb-5 flex justify-end gap-2.5">
+                    <Button variant="outline" onClick={() => setShowChartBuilder(false)} className="h-9 px-4 text-xs rounded-xl border-gray-200 hover:bg-gray-50">
                       Cancel
                     </Button>
                     <Button
                       onClick={addChart}
                       disabled={!chartBuilderXAxis || chartBuilderYAxis.length === 0}
-                      className="bg-[#F26419] text-white hover:bg-[#D9580F] h-9 text-xs rounded-xl shadow-sm"
+                      className="bg-[#F26419] text-white hover:bg-[#D9580F] h-9 px-5 text-xs rounded-xl shadow-sm disabled:opacity-40"
                     >
                       <PieChart className="h-3.5 w-3.5 mr-1.5" />
                       Create Chart
                     </Button>
-                  </DialogFooter>
+                  </div>
                 </DialogContent>
               </Dialog>
             </>

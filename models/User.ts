@@ -10,13 +10,20 @@ export interface IUser extends Document {
   password: string
   role: UserRole
   institution?: string
+  bio?: string
+  degrees?: string
+  keywords?: string[]
+  links?: { label: string; url: string }[]
   isEmailVerified: boolean
   emailVerificationToken?: string
   emailVerificationExpires?: Date
+  passwordResetToken?: string
+  passwordResetExpires?: Date
   createdAt: Date
   updatedAt: Date
   comparePassword(candidatePassword: string): Promise<boolean>
   generateVerificationToken(): string
+  generatePasswordResetToken(): string
 }
 
 const UserSchema: Schema = new Schema(
@@ -53,6 +60,29 @@ const UserSchema: Schema = new Schema(
       trim: true,
       maxlength: [200, 'Institution cannot exceed 200 characters'],
     },
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: [2000, 'Bio cannot exceed 2000 characters'],
+      default: '',
+    },
+    degrees: {
+      type: String,
+      trim: true,
+      maxlength: [300, 'Degrees cannot exceed 300 characters'],
+      default: '',
+    },
+    keywords: {
+      type: [String],
+      default: [],
+    },
+    links: {
+      type: [{
+        label: { type: String, required: true },
+        url: { type: String, required: true },
+      }],
+      default: [],
+    },
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -62,6 +92,14 @@ const UserSchema: Schema = new Schema(
       select: false,
     },
     emailVerificationExpires: {
+      type: Date,
+      select: false,
+    },
+    passwordResetToken: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpires: {
       type: Date,
       select: false,
     },
@@ -76,6 +114,7 @@ UserSchema.index({ email: 1 })
 UserSchema.index({ role: 1 })
 UserSchema.index({ isEmailVerified: 1 })
 UserSchema.index({ emailVerificationToken: 1 })
+UserSchema.index({ passwordResetToken: 1 })
 
 // Hash password before saving
 UserSchema.pre('save', async function (this: IUser) {
@@ -112,6 +151,14 @@ UserSchema.methods.generateVerificationToken = function (): string {
   const token = crypto.randomBytes(32).toString('hex')
   this.emailVerificationToken = crypto.createHash('sha256').update(token).digest('hex')
   this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+  return token
+}
+
+// Method to generate password reset token
+UserSchema.methods.generatePasswordResetToken = function (): string {
+  const token = crypto.randomBytes(32).toString('hex')
+  this.passwordResetToken = crypto.createHash('sha256').update(token).digest('hex')
+  this.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
   return token
 }
 
