@@ -7,6 +7,8 @@ export const projectTypeEnum = z.enum([
   'Preprints',
 ])
 
+export const visibilityEnum = z.enum(['private', 'public'])
+
 export const projectCreateSchema = z.object({
   title: z
     .string()
@@ -26,6 +28,7 @@ export const projectCreateSchema = z.object({
     .trim(),
   users: z.array(z.string().min(1)).optional().default([]),
   type: projectTypeEnum,
+  visibility: visibilityEnum.optional().default('private'),
   createdDate: z
     .string()
     .datetime({ message: 'createdDate must be a valid ISO date string' })
@@ -53,6 +56,7 @@ export const projectUpdateSchema = z.object({
     .optional(),
   users: z.array(z.string().min(1)).optional(),
   type: projectTypeEnum.optional(),
+  visibility: visibilityEnum.optional(),
   createdDate: z
     .string()
     .datetime({ message: 'createdDate must be a valid ISO date string' })

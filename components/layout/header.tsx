@@ -34,7 +34,7 @@ import { useEffect, useMemo, useState } from "react"
 
 type NotificationItem = {
   _id: string
-  type: "collaboration_request" | "info" | "success" | "warning"
+  type: "collaboration_request" | "review_request" | "info" | "success" | "warning"
   title: string
   message: string
   status: "unread" | "read" | "accepted" | "declined"
@@ -50,6 +50,7 @@ const notificationIconMap = {
   success: { icon: CheckCircle, color: "text-emerald-500", bg: "bg-emerald-50" },
   warning: { icon: AlertCircle, color: "text-amber-500", bg: "bg-amber-50" },
   collaboration_request: { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-50" },
+  review_request: { icon: UserPlus, color: "text-[#F26419]", bg: "bg-[#F26419]/5" },
   info: { icon: Info, color: "text-[#1DA619]", bg: "bg-[#1DA619]/5" },
 }
 
@@ -296,7 +297,7 @@ export function Header() {
                             {formatTime(notification.createdAt)}
                           </p>
 
-                          {notification.type === "collaboration_request" && notification.status === "unread" && (
+                          {(notification.type === "collaboration_request" || notification.type === "review_request") && notification.status === "unread" && (
                             <div className="mt-2 flex items-center gap-2">
                               <button
                                 className="h-7 px-3 text-[11px] font-medium bg-[#1DA619] text-white hover:bg-[#158514] rounded-md transition-colors"

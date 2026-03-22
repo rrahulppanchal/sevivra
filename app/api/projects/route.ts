@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
       description: validatedData.description,
       users: Array.from(users),
       type: validatedData.type,
+      visibility: validatedData.visibility || 'private',
       createdDate: validatedData.createdDate ? new Date(validatedData.createdDate) : undefined,
     })
 
@@ -95,12 +96,13 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Project created successfully',
         data: {
-          id: project._id,
+          _id: project._id,
           title: project.title,
           subtitle: project.subtitle,
           description: project.description,
           users: project.users,
           type: project.type,
+          visibility: project.visibility,
           createdDate: project.createdDate,
         },
       },

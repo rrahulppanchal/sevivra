@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Pencil, Trash2,
   Plus, FolderOpen, Users, Clock, ArrowUpRight, SlidersHorizontal,
+  Lock, Globe, Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
@@ -36,6 +37,7 @@ interface Project {
   description: string
   users: string[]
   type: ProjectType
+  visibility?: "private" | "public"
   createdDate?: string
   createdAt?: string
 }
@@ -70,6 +72,7 @@ export default function ProjectsPage() {
   const [usersError, setUsersError] = useState<string | null>(null)
   const [collaboratorSearch, setCollaboratorSearch] = useState("")
   const [filterDialogOpen, setFilterDialogOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   const [tempYear, setTempYear] = useState("All")
   const [tempTypes, setTempTypes] = useState<string[]>(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"])
   const [formState, setFormState] = useState({
@@ -79,6 +82,7 @@ export default function ProjectsPage() {
     users: [] as string[],
     type: "Journal Articles" as ProjectType,
     createdDate: "",
+    visibility: "private" as "private" | "public",
   })
 
   useEffect(() => {
@@ -131,6 +135,7 @@ export default function ProjectsPage() {
   }, [isDialogOpen])
 
   const filteredProjects = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
     return projects.filter((project) => {
       const typeMatch = selectedTypes.includes(project.type)
       const dateValue = project.createdDate || project.createdAt
@@ -138,16 +143,20 @@ export default function ProjectsPage() {
       const yearMatch = selectedYear === "All" ||
         (selectedYear === "Earlier" && year !== null && year < 2023) ||
         (selectedYear !== "Earlier" && selectedYear !== "All" && year === Number(selectedYear))
-      return typeMatch && yearMatch
+      const searchMatch = !query ||
+        project.title.toLowerCase().includes(query) ||
+        project.description.toLowerCase().includes(query) ||
+        (project.subtitle?.toLowerCase().includes(query) ?? false)
+      return typeMatch && yearMatch && searchMatch
     })
-  }, [projects, selectedTypes, selectedYear])
+  }, [projects, selectedTypes, selectedYear, searchQuery])
 
   const pageSize = 6
   const [currentPage, setCurrentPage] = useState(1)
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / pageSize))
   const paginatedProjects = filteredProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
-  useEffect(() => { setCurrentPage(1) }, [selectedTypes, selectedYear, projects])
+  useEffect(() => { setCurrentPage(1) }, [selectedTypes, selectedYear, projects, searchQuery])
 
   const userNameMap = useMemo(() => new Map(usersOptions.map((u) => [u.id, u.name])), [usersOptions])
 
@@ -225,7 +234,9 @@ export default function ProjectsPage() {
         description: formState.description.trim(),
         users: Array.from(users),
         type: formState.type,
+        visibility: formState.visibility,
         createdDate: formState.createdDate ? new Date(formState.createdDate).toISOString() : undefined,
+        visibility: formState.visibility,
       }
 
       const response = await fetch(isEditing ? `/api/projects/${editingProject?._id}` : "/api/projects", {
@@ -243,7 +254,7 @@ export default function ProjectsPage() {
       }
       setIsDialogOpen(false)
       setEditingProject(null)
-      setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "" })
+      setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" })
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to create project")
     }
@@ -258,6 +269,7 @@ export default function ProjectsPage() {
       users: project.users || [],
       type: project.type,
       createdDate: project.createdDate ? project.createdDate.split("T")[0] : "",
+      visibility: (project as Project & { visibility?: string }).visibility === "public" ? "public" : "private",
     })
     setIsDialogOpen(true)
   }
@@ -279,14 +291,19 @@ export default function ProjectsPage() {
 
       {/* Page header */}
       <div className="w-full border-b border-[#e8e4dc] dark:border-[#222] bg-white dark:bg-[#161616]">
-        <div className="max-w-4xl mx-auto px-8 py-8">
-          <div className="flex items-end justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight mb-1">Projects</h1>
-              <p className="text-[13px] text-gray-500">
-                {isLoading ? "Loading..." : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
-                {!isLoading && filteredProjects.length !== projects.length && ` · ${filteredProjects.length} shown`}
-              </p>
+        <div className="max-w-4xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-[#1DA619]/10 flex items-center justify-center">
+                <FolderOpen className="h-5 w-5 text-[#1DA619]" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-0.5">Projects</h1>
+                <p className="text-[13px] text-gray-500">
+                  {isLoading ? "Loading..." : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
+                  {!isLoading && filteredProjects.length !== projects.length && ` · ${filteredProjects.length} shown`}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {/* Filters modal */}
@@ -312,16 +329,25 @@ export default function ProjectsPage() {
                     )}
                   </button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[420px]">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <SlidersHorizontal className="h-4 w-4 text-[#1DA619]" />
+                <DialogContent className="sm:max-w-[420px] !p-0 !gap-0" showCloseButton={true}>
+                  {/* Branded top accent bar */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#1DA619] via-[#1DA619] to-[#F26419] rounded-t-2xl" />
+
+                  <DialogHeader className="px-6 pt-5 pb-0">
+                    <DialogTitle className="flex items-center gap-2.5 text-[16px]">
+                      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419" />
+                        <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                        <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2" />
+                      </svg>
                       Filter Projects
                     </DialogTitle>
-                    <DialogDescription>Narrow down your project list by year and type.</DialogDescription>
+                    <DialogDescription className="!mt-0.5 pl-[30px]">
+                      Narrow down your project list by year and type.
+                    </DialogDescription>
                   </DialogHeader>
 
-                  <div className="px-6 space-y-6">
+                  <div className="px-6 pt-4 pb-2 space-y-5">
                     {/* Year filter */}
                     <div>
                       <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2.5 block">Year</label>
@@ -377,44 +403,58 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  <DialogFooter>
+                  <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-between">
                     <button
                       onClick={() => { setTempYear("All"); setTempTypes(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"]) }}
-                      className="h-9 px-4 rounded-lg text-[12px] font-medium text-gray-400 hover:text-gray-600 transition-colors mr-auto"
+                      className="text-[12px] font-medium text-[#F26419] hover:text-[#d4550f] transition-colors"
                     >
                       Reset all
                     </button>
-                    <button onClick={() => setFilterDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 transition-colors">
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => { setSelectedYear(tempYear); setSelectedTypes(tempTypes); setFilterDialogOpen(false) }}
-                      className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors shadow-sm"
-                    >
-                      Apply Filters
-                    </button>
-                  </DialogFooter>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setFilterDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-[#222] transition-colors">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => { setSelectedYear(tempYear); setSelectedTypes(tempTypes); setFilterDialogOpen(false) }}
+                        className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors shadow-sm"
+                      >
+                        Apply Filters
+                      </button>
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
 
               {/* New Project dialog */}
-              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingProject(null) }}>
+              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingProject(null); setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" }) } }}>
                 <DialogTrigger asChild>
-                  <button className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors shadow-sm">
+                  <button
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1DA619] text-white text-[12px] font-semibold hover:bg-[#158514] transition-all shadow-sm hover:shadow-md active:scale-[0.97]"
+                    onClick={() => { setEditingProject(null); setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" }) }}
+                  >
                     <Plus className="h-3.5 w-3.5" />
                     New Project
                   </button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[520px]">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <FolderOpen className="h-4 w-4 text-[#1DA619]" />
+                <DialogContent className="sm:max-w-lg !p-0 !gap-0" showCloseButton={true}>
+                  {/* Branded top accent bar */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#1DA619] via-[#1DA619] to-[#F26419] rounded-t-2xl" />
+
+                  <DialogHeader className="px-6 pt-5 pb-0">
+                    <DialogTitle className="flex items-center gap-2.5 text-[16px]">
+                      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419" />
+                        <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                        <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2" />
+                      </svg>
                       {editingProject ? "Edit Project" : "New Project"}
                     </DialogTitle>
-                    <DialogDescription>Fill in the project details below.</DialogDescription>
+                    <DialogDescription className="!mt-0.5 pl-[30px]">
+                      {editingProject ? "Update your project details." : "Fill in the details to get started."}
+                    </DialogDescription>
                   </DialogHeader>
 
-                  <div className="px-6 space-y-5 max-h-[60vh] overflow-y-auto">
+                  <div className="px-6 pt-4 pb-2 space-y-4 max-h-[62vh] overflow-y-auto">
                     {/* Title */}
                     <div>
                       <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Title *</label>
@@ -431,12 +471,12 @@ export default function ProjectsPage() {
                     {/* Description */}
                     <div>
                       <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Description *</label>
-                      <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Describe the project scope, goals, and methodology..." className="min-h-[90px] text-[13px]" />
+                      <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Describe the project scope, goals, and methodology..." className="min-h-[90px] text-[13px] resize-none" />
                       {formErrors.description && <p className="text-[11px] text-red-500 mt-1">{formErrors.description}</p>}
                     </div>
 
-                    {/* Type & Date row */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Type & Date */}
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Type *</label>
                         <Select value={formState.type} onValueChange={(v: ProjectType) => { setFormState((prev) => ({ ...prev, type: v })); setFormErrors((prev) => ({ ...prev, type: undefined })) }}>
@@ -446,7 +486,7 @@ export default function ProjectsPage() {
                           <SelectContent>
                             <SelectItem value="Journal Articles">Journal Articles</SelectItem>
                             <SelectItem value="Conference Papers">Conference Papers</SelectItem>
-                            <SelectItem value="Books & Chapters">Books & Chapters</SelectItem>
+                            <SelectItem value="Books & Chapters">Books &amp; Chapters</SelectItem>
                             <SelectItem value="Preprints">Preprints</SelectItem>
                           </SelectContent>
                         </Select>
@@ -468,6 +508,55 @@ export default function ProjectsPage() {
                             <Calendar mode="single" selected={formState.createdDate ? new Date(formState.createdDate) : undefined} onSelect={(date) => setFormState((prev) => ({ ...prev, createdDate: date ? format(date, "yyyy-MM-dd") : "" }))} initialFocus />
                           </PopoverContent>
                         </Popover>
+                      </div>
+                    </div>
+
+                    {/* Visibility */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Visibility</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormState((prev) => ({ ...prev, visibility: "private" }))}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border text-left transition-all",
+                            formState.visibility === "private"
+                              ? "border-[#1DA619] bg-[#1DA619]/5 ring-1 ring-[#1DA619]/20"
+                              : "border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] hover:border-gray-300"
+                          )}
+                        >
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            formState.visibility === "private" ? "bg-[#1DA619]/10" : "bg-gray-100 dark:bg-[#222]"
+                          )}>
+                            <Lock className={cn("h-3.5 w-3.5", formState.visibility === "private" ? "text-[#1DA619]" : "text-gray-400")} />
+                          </div>
+                          <div>
+                            <p className={cn("text-[13px] font-medium", formState.visibility === "private" ? "text-[#1F2937] dark:text-white" : "text-gray-500")}>Private</p>
+                            <p className="text-[10px] text-gray-400 leading-tight">Only collaborators</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormState((prev) => ({ ...prev, visibility: "public" }))}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border text-left transition-all",
+                            formState.visibility === "public"
+                              ? "border-[#1DA619] bg-[#1DA619]/5 ring-1 ring-[#1DA619]/20"
+                              : "border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] hover:border-gray-300"
+                          )}
+                        >
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            formState.visibility === "public" ? "bg-[#1DA619]/10" : "bg-gray-100 dark:bg-[#222]"
+                          )}>
+                            <Globe className={cn("h-3.5 w-3.5", formState.visibility === "public" ? "text-[#1DA619]" : "text-gray-400")} />
+                          </div>
+                          <div>
+                            <p className={cn("text-[13px] font-medium", formState.visibility === "public" ? "text-[#1F2937] dark:text-white" : "text-gray-500")}>Public</p>
+                            <p className="text-[10px] text-gray-400 leading-tight">Anyone can discover</p>
+                          </div>
+                        </button>
                       </div>
                     </div>
 
@@ -504,22 +593,45 @@ export default function ProjectsPage() {
                     )}
                   </div>
 
-                  <DialogFooter>
-                    <button onClick={() => setIsDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 transition-colors">
-                      Cancel
-                    </button>
-                    <button onClick={handleCreateProject} disabled={!formState.title || !formState.description || usersLoading || !!usersError} className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40 shadow-sm">
-                      {editingProject ? "Update Project" : "Create Project"}
-                    </button>
-                  </DialogFooter>
+                  <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-between">
+                    <p className="text-[11px] text-gray-300 dark:text-gray-600">* Required fields</p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setIsDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-[#222] transition-colors">
+                        Cancel
+                      </button>
+                      <button onClick={handleCreateProject} disabled={!formState.title || !formState.description || usersLoading || !!usersError} className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40 shadow-sm">
+                        {editingProject ? "Update Project" : "Create Project"}
+                      </button>
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
             </div>
           </div>
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search projects by title, subtitle, or description..."
+              className="w-full h-10 pl-10 pr-4 rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#1a1a1a] text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-400 focus:outline-none focus:border-[#1DA619]/40 focus:ring-2 focus:ring-[#1DA619]/10 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-gray-200 dark:bg-[#333] flex items-center justify-center text-gray-500 hover:bg-gray-300 dark:hover:bg-[#444] transition-colors"
+              >
+                <span className="text-[10px] font-bold">&times;</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <main className="max-w-4xl mx-auto px-8 py-8 w-full flex-1 space-y-6">
+      <main className="max-w-4xl mx-auto px-8 py-6 w-full flex-1 space-y-5">
 
         {/* Active filters indicator */}
         {(selectedYear !== "All" || selectedTypes.length < 4) && (
@@ -560,19 +672,20 @@ export default function ProjectsPage() {
           ) : filteredProjects.length === 0 ? (
             <div className="py-16 text-center">
               <div className="mx-auto h-12 w-12 rounded-xl bg-gray-50 dark:bg-[#222] flex items-center justify-center mb-3">
-                <FolderOpen className="h-5 w-5 text-gray-300" />
+                {searchQuery ? <Search className="h-5 w-5 text-gray-300" /> : <FolderOpen className="h-5 w-5 text-gray-300" />}
               </div>
               <p className="text-[14px] font-medium text-gray-500 mb-1">
-                {projects.length === 0 ? "No projects yet" : "No projects match filters"}
+                {projects.length === 0 ? "No projects yet" : searchQuery ? `No results for "${searchQuery}"` : "No projects match filters"}
               </p>
               <p className="text-[12px] text-gray-400">
-                {projects.length === 0 ? "Create your first project to get started" : "Try adjusting the filters"}
+                {projects.length === 0 ? "Create your first project to get started" : searchQuery ? "Try a different search term" : "Try adjusting the filters"}
               </p>
             </div>
           ) : (
             <div className="divide-y divide-[#f0ece4] dark:divide-[#222]">
               {paginatedProjects.map((project) => {
                 const isOwner = project.users?.[0] === user?.id
+                const isPublic = project.visibility === "public"
                 const collaboratorNames = project.users
                   ?.map((uid) => userNameMap.get(uid))
                   .filter(Boolean) as string[] || []
@@ -594,6 +707,17 @@ export default function ProjectsPage() {
                           <span className={cn("text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border", typeColors[project.type])}>
                             {project.type}
                           </span>
+                          {isPublic ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#1DA619]/8 text-[#1DA619] border border-[#1DA619]/15">
+                              <Globe className="h-2.5 w-2.5" />
+                              Public
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-500/10 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-500/20">
+                              <Lock className="h-2.5 w-2.5" />
+                              Private
+                            </span>
+                          )}
                         </div>
                         {project.subtitle && (
                           <p className="text-[13px] text-gray-600 dark:text-gray-400 mb-1">{project.subtitle}</p>
@@ -617,28 +741,52 @@ export default function ProjectsPage() {
                     </Link>
 
                     {/* Edit/Delete hover actions */}
-                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                    <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all z-10">
                       <button
                         onClick={(e) => { e.preventDefault(); handleEditProject(project) }}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-[#1DA619] hover:border-[#1DA619]/30 transition-colors shadow-sm"
+                        className="h-7 px-2.5 rounded-md flex items-center gap-1.5 bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-[#1DA619] hover:border-[#1DA619]/30 hover:bg-[#1DA619]/5 transition-all shadow-sm text-[10px] font-medium"
                       >
                         <Pencil className="h-3 w-3" />
+                        Edit
                       </button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <button className="h-7 w-7 rounded-lg flex items-center justify-center bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors shadow-sm">
+                          <button className="h-7 px-2.5 rounded-md flex items-center gap-1.5 bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shadow-sm text-[10px] font-medium">
                             <Trash2 className="h-3 w-3" />
+                            Delete
                           </button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this project?</AlertDialogTitle>
-                            <AlertDialogDescription>This action cannot be undone. The project and all its data will be permanently deleted.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleDeleteProject(project._id)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
+                        <AlertDialogContent className="p-0 gap-0 sm:max-w-[400px] overflow-hidden">
+                          <div className="px-6 pt-6 pb-4">
+                            <AlertDialogHeader className="gap-3">
+                              <div className="h-10 w-10 rounded-xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                                <Trash2 className="h-5 w-5 text-red-500" />
+                              </div>
+                              <AlertDialogTitle className="text-[16px]">Delete this project?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. The project and all its data will be permanently removed.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+
+                            {/* Project name preview */}
+                            <div className="mt-4 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-100 dark:border-[#2a2a2a]">
+                              <p className="text-[12px] text-gray-400 mb-0.5">Project</p>
+                              <p className="text-[13px] font-medium text-[#1F2937] dark:text-white truncate">{project.title}</p>
+                            </div>
+                          </div>
+
+                          <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-end gap-2">
+                            <AlertDialogCancel className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 bg-white dark:bg-transparent hover:!bg-gray-50 hover:!text-gray-600 dark:hover:!bg-[#222] dark:hover:!text-gray-300">
+                              Cancel
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              className="h-9 px-5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[12px] font-medium shadow-sm"
+                              onClick={() => handleDeleteProject(project._id)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1.5" />
+                              Delete Project
+                            </AlertDialogAction>
+                          </div>
                         </AlertDialogContent>
                       </AlertDialog>
                     </div>
@@ -650,37 +798,41 @@ export default function ProjectsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-5 py-3 border-t border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
+            <div className="px-5 py-3.5 border-t border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
               <span className="text-[11px] text-gray-400">
-                Page {currentPage} of {totalPages}
+                Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredProjects.length)} of {filteredProjects.length}
               </span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                  className="h-8 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-[#222] disabled:opacity-30 transition-colors"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
+                  Prev
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={cn(
-                      "h-7 w-7 rounded-lg text-[12px] font-medium flex items-center justify-center transition-colors",
-                      page === currentPage
-                        ? "bg-[#1DA619] text-white"
-                        : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-                    )}
-                  >
-                    {page}
-                  </button>
-                ))}
+                <div className="flex items-center gap-0.5 mx-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={cn(
+                        "h-8 w-8 rounded-lg text-[12px] font-medium flex items-center justify-center transition-all",
+                        page === currentPage
+                          ? "bg-[#1DA619] text-white shadow-sm"
+                          : "text-gray-400 hover:bg-gray-50 dark:hover:bg-[#222] hover:text-gray-600"
+                      )}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                  className="h-8 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-[#222] disabled:opacity-30 transition-colors"
                 >
+                  Next
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>

@@ -31,10 +31,11 @@ export async function GET(request: NextRequest) {
       filter["metadata.projectId"] = projectId
     }
 
-    const notifications = await Notification.find(filter)
-      .sort({ createdAt: -1 })
-      .select("-__v")
-      .lean()
+    let query = Notification.find(filter).sort({ createdAt: -1 }).select("-__v")
+    if (sent) {
+      query = query.populate("recipientId", "name email")
+    }
+    const notifications = await query.lean()
 
     return NextResponse.json({ success: true, data: notifications }, { status: 200 })
   } catch (error: any) {

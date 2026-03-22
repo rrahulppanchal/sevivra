@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/db'
 import User from '@/models/User'
 import type { UserRole } from '@/models/User'
+import Notification from '@/models/Notification'
+import PendingInvite from '@/models/PendingInvite'
 import { sendVerificationEmail } from '@/lib/email'
 
 export async function POST(request: NextRequest) {
@@ -57,6 +59,32 @@ export async function POST(request: NextRequest) {
       await sendVerificationEmail(newUser.email, verificationToken, newUser.name)
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError)
+    }
+
+    // Process pending invites for this email
+    try {
+      const pendingInvites = await PendingInvite.find({ email: newUser.email }).lean()
+      if (pendingInvites.length > 0) {
+        const notifications = pendingInvites.map((invite: any) => ({
+          recipientId: newUser._id,
+          senderId: invite.senderUserId,
+          type: invite.type,
+          title: invite.type === 'review_request' ? 'Review request' : 'Collaboration request',
+          message: invite.customMessage
+            ? `${invite.senderName} invited you to ${invite.type === 'review_request' ? 'review' : 'collaborate on'} "${invite.projectTitle}": "${invite.customMessage}"`
+            : `${invite.senderName} invited you to ${invite.type === 'review_request' ? 'review' : 'collaborate on'} "${invite.projectTitle}".`,
+          status: 'unread',
+          metadata: {
+            projectId: invite.projectId.toString(),
+            projectTitle: invite.projectTitle,
+            customMessage: invite.customMessage || undefined,
+          },
+        }))
+        await Notification.insertMany(notifications)
+        await PendingInvite.deleteMany({ email: newUser.email })
+      }
+    } catch (inviteError) {
+      console.error('Failed to process pending invites:', inviteError)
     }
 
     // Return user data (without password)

@@ -35,18 +35,19 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    if (notification.type === "collaboration_request" && status === "accepted") {
+    if ((notification.type === "collaboration_request" || notification.type === "review_request") && status === "accepted") {
       const projectId = notification.metadata?.projectId
       if (projectId && validateObjectId(projectId)) {
         await Project.findByIdAndUpdate(projectId, { $addToSet: { users: currentUser.id } })
       }
       if (notification.senderId) {
+        const acceptLabel = notification.type === "review_request" ? "Review request" : "Collaboration request"
         await Notification.create({
           recipientId: notification.senderId,
           senderId: currentUser.id,
           type: "info",
-          title: "Collaboration request accepted",
-          message: `${currentUser.name || "A collaborator"} accepted your request.`,
+          title: `${acceptLabel} accepted`,
+          message: `${currentUser.name || "A user"} accepted your ${notification.type === "review_request" ? "review" : "collaboration"} request for "${notification.metadata?.projectTitle || "a project"}".`,
           status: "unread",
           metadata: {
             projectId: projectId || undefined,

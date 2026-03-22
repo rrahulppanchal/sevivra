@@ -32,6 +32,17 @@ interface ReviewInvite {
   name: string
   isExistingUser: boolean
   status: "pending" | "sent" | "error"
+  reviewStatus?: "pending" | "accepted" | "declined"
+}
+
+interface SentNotification {
+  _id: string
+  recipientId: { _id: string; name: string; email: string } | string
+  type: string
+  status: string
+  message: string
+  metadata?: { projectId?: string }
+  createdAt: string
 }
 
 interface SearchedUser {
@@ -71,8 +82,12 @@ export default function PublishPage() {
   // Reviewer state
   const [reviewerEmail, setReviewerEmail] = useState("")
   const [reviewerName, setReviewerName] = useState("")
+  const [customMessage, setCustomMessage] = useState("")
   const [reviewInvites, setReviewInvites] = useState<ReviewInvite[]>([])
   const [isSendingInvite, setIsSendingInvite] = useState(false)
+
+  // Sent notifications (acceptance status tracking)
+  const [sentNotifications, setSentNotifications] = useState<SentNotification[]>([])
 
   // User search
   const [userSearch, setUserSearch] = useState("")
@@ -114,6 +129,26 @@ export default function PublishPage() {
     }
     loadContent()
   }, [manuscriptId])
+
+  // Fetch sent review notifications for this project
+  useEffect(() => {
+    if (!projectId) return
+    const fetchSentNotifications = async () => {
+      try {
+        const res = await fetch(`/api/notifications?sent=true&projectId=${projectId}&type=review_request`)
+        const json = await res.json()
+        if (res.ok && json.data) {
+          setSentNotifications(json.data)
+        }
+      } catch (err) {
+        console.error("Failed to fetch sent notifications:", err)
+      }
+    }
+    fetchSentNotifications()
+    // Refresh every 30s
+    const interval = setInterval(fetchSentNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [projectId])
 
   // Search users
   useEffect(() => {
@@ -225,7 +260,7 @@ export default function PublishPage() {
       const response = await fetch("/api/review-invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), name: name.trim(), projectId }),
+        body: JSON.stringify({ email: email.trim(), name: name.trim(), projectId, customMessage: customMessage.trim() || undefined }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result?.error || "Failed to send invite")
@@ -511,50 +546,59 @@ export default function PublishPage() {
                 </div>
 
                 {/* Invite external reviewer */}
-                <div className="grid grid-cols-5 gap-2">
-                  <div className="col-span-2">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <Input
                       value={reviewerName}
                       onChange={(e) => setReviewerName(e.target.value)}
                       placeholder="Name (optional)"
                       className="h-10 text-[13px]"
                     />
-                  </div>
-                  <div className="col-span-2">
                     <Input
                       value={reviewerEmail}
                       onChange={(e) => setReviewerEmail(e.target.value)}
                       placeholder="reviewer@email.com"
                       type="email"
                       className="h-10 text-[13px]"
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSendInvite(reviewerEmail, reviewerName) } }}
                     />
                   </div>
+                  <textarea
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    placeholder="Add a personal message for the reviewer (optional)..."
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] px-3 py-2.5 text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-400 focus:outline-none focus:border-[#1DA619]/40 focus:ring-2 focus:ring-[#1DA619]/10 resize-none transition-all"
+                  />
                   <button
                     onClick={() => handleSendInvite(reviewerEmail, reviewerName)}
                     disabled={isSendingInvite || !reviewerEmail.trim()}
-                    className="h-10 flex items-center justify-center gap-1.5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40"
+                    className="w-full h-10 flex items-center justify-center gap-1.5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40"
                   >
                     {isSendingInvite ? (
                       <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>
                         <Send className="h-3 w-3" />
-                        Send
+                        Send Invitation
                       </>
                     )}
                   </button>
                 </div>
 
                 {/* Invited reviewers list */}
-                {reviewInvites.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invited Reviewers</p>
-                    <div className="space-y-1">
+                {(reviewInvites.length > 0 || sentNotifications.length > 0) && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invited Reviewers</p>
+                      <span className="text-[10px] text-gray-400">{reviewInvites.length + sentNotifications.filter((n) => !reviewInvites.some((i) => i.email === ((n.recipientId as any)?.email))).length} total</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {/* Current session invites */}
                       {reviewInvites.map((invite) => (
                         <div
                           key={invite.id}
-                          className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50/50 dark:bg-white/[0.02] border border-gray-100 dark:border-[#333]"
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gray-50/50 dark:bg-white/[0.02] border border-gray-100 dark:border-[#333]"
                         >
                           <div className={cn(
                             "h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0",
@@ -588,8 +632,8 @@ export default function PublishPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={cn(
-                              "text-[10px] font-medium",
-                              invite.status === "sent" ? "text-[#1DA619]" : invite.status === "error" ? "text-red-500" : "text-gray-400"
+                              "text-[10px] font-medium px-2 py-0.5 rounded-full",
+                              invite.status === "sent" ? "text-[#1DA619] bg-[#1DA619]/8" : invite.status === "error" ? "text-red-500 bg-red-50" : "text-gray-400 bg-gray-100"
                             )}>
                               {invite.status === "sent" ? "Sent" : invite.status === "error" ? "Failed" : "Sending..."}
                             </span>
@@ -604,6 +648,55 @@ export default function PublishPage() {
                           </div>
                         </div>
                       ))}
+
+                      {/* Previously sent notifications (from DB) */}
+                      {sentNotifications
+                        .filter((n) => !reviewInvites.some((i) => i.email === ((n.recipientId as any)?.email)))
+                        .map((notif) => {
+                          const recipient = typeof notif.recipientId === "object" ? notif.recipientId : null
+                          const recipientName = recipient?.name || "Unknown"
+                          const recipientEmail = recipient?.email || ""
+                          const isAccepted = notif.status === "accepted"
+                          const isDeclined = notif.status === "declined"
+                          const isPending = notif.status === "unread" || notif.status === "read"
+
+                          return (
+                            <div
+                              key={notif._id}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gray-50/50 dark:bg-white/[0.02] border border-gray-100 dark:border-[#333]"
+                            >
+                              <div className={cn(
+                                "h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0",
+                                isAccepted ? "bg-emerald-50 dark:bg-emerald-500/10" : isDeclined ? "bg-red-50 dark:bg-red-500/10" : "bg-amber-50 dark:bg-amber-500/10"
+                              )}>
+                                {isAccepted ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                ) : isDeclined ? (
+                                  <X className="h-3.5 w-3.5 text-red-500" />
+                                ) : (
+                                  <Clock className="h-3.5 w-3.5 text-amber-500" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[12px] font-medium truncate">{recipientName}</p>
+                                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#1DA619]/8 text-[#1DA619] border border-[#1DA619]/15">
+                                    Member
+                                  </span>
+                                </div>
+                                {recipientEmail && <p className="text-[10px] text-gray-400 truncate">{recipientEmail}</p>}
+                              </div>
+                              <span className={cn(
+                                "text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0",
+                                isAccepted ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10" :
+                                isDeclined ? "text-red-500 bg-red-50 dark:bg-red-500/10" :
+                                "text-amber-600 bg-amber-50 dark:bg-amber-500/10"
+                              )}>
+                                {isAccepted ? "Accepted" : isDeclined ? "Declined" : "Pending"}
+                              </span>
+                            </div>
+                          )
+                        })}
                     </div>
                   </div>
                 )}

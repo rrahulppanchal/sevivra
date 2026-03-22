@@ -60,8 +60,12 @@ export async function sendReviewInvitationEmail(
   projectTitle: string,
   projectUrl: string,
   isExistingUser: boolean,
+  customMessage?: string,
 ) {
   const signupUrl = `${APP_URL}/auth/signup`
+  const escapedMessage = customMessage
+    ? customMessage.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
+    : ''
 
   await transporter.sendMail({
     from: `"Sevivra" <${FROM_EMAIL}>`,
@@ -79,6 +83,16 @@ export async function sendReviewInvitationEmail(
         <p style="color: #4B5563; font-size: 16px; line-height: 1.6;">
           <strong>${senderName}</strong> has invited you to review the manuscript <strong>"${projectTitle}"</strong> on Sevivra.
         </p>
+        ${escapedMessage ? `
+        <div style="margin: 20px 0; padding: 16px 20px; background-color: #F9FAFB; border-left: 3px solid #1DA619; border-radius: 0 8px 8px 0;">
+          <p style="color: #6B7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px 0;">
+            Message from ${senderName}
+          </p>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0; font-style: italic;">
+            "${escapedMessage}"
+          </p>
+        </div>
+        ` : ''}
         <div style="text-align: center; margin: 30px 0;">
           <a href="${isExistingUser ? projectUrl : signupUrl}"
              style="background-color: #1DA619; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">

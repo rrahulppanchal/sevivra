@@ -13,7 +13,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '10', 10)))
     const skip = (page - 1) * limit
 
-    const filter: Record<string, any> = {}
+    const filter: Record<string, any> = {
+      visibility: 'public',
+    }
 
     if (query.trim()) {
       filter.$or = [
@@ -40,12 +42,15 @@ export async function GET(request: NextRequest) {
     const data = projects.map((project: any) => ({
       _id: project._id.toString(),
       title: project.title,
+      subtitle: project.subtitle || '',
       description: project.description,
       type: project.type,
+      visibility: project.visibility || 'private',
       users: project.users?.map((u: any) => ({
         id: u._id?.toString(),
         name: u.name,
       })) || [],
+      createdDate: project.createdDate,
       updatedAt: project.updatedAt,
     }))
 

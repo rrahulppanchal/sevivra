@@ -3,6 +3,7 @@ import connectDB from "@/lib/db"
 import User from "@/models/User"
 import Project from "@/models/Project"
 import Notification from "@/models/Notification"
+import PendingInvite from "@/models/PendingInvite"
 import { getCurrentUser } from "@/lib/auth"
 import { sendReviewInvitationEmail } from "@/lib/email"
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { email, name, projectId } = body
+    const { email, name, projectId, customMessage } = body
 
     if (!email || typeof email !== "string" || !/^\S+@\S+\.\S+$/.test(email.trim())) {
       return NextResponse.json({ error: "A valid email is required." }, { status: 400 })
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.trim().toLowerCase()
     const reviewerName = typeof name === "string" ? name.trim() : ""
+    const personalMessage = typeof customMessage === "string" ? customMessage.trim() : ""
 
     // Look up project
     const project = await Project.findById(projectId).lean()
@@ -69,10 +71,32 @@ export async function POST(request: NextRequest) {
         senderId: currentUser.id,
         type: "review_request",
         title: "Review request",
-        message: `${senderName} invited you to review "${projectTitle}".`,
+        message: personalMessage
+          ? `${senderName} invited you to review "${projectTitle}": "${personalMessage}"`
+          : `${senderName} invited you to review "${projectTitle}".`,
         status: "unread",
-        metadata: { projectId, projectTitle },
+        metadata: { projectId, projectTitle, customMessage: personalMessage || undefined },
       })
+    }
+
+    // If non-existing user, store a pending invite so they get notified after signup
+    if (!existingUser) {
+      try {
+        await PendingInvite.create({
+          email: normalizedEmail,
+          senderUserId: currentUser.id,
+          senderName,
+          projectId,
+          projectTitle,
+          type: "review_request",
+          customMessage: personalMessage || undefined,
+        })
+      } catch (dupError: any) {
+        // Ignore duplicate key error (invite already pending)
+        if (dupError.code !== 11000) {
+          console.error("Failed to create pending invite:", dupError)
+        }
+      }
     }
 
     // Send email to both existing and non-existing users
@@ -84,6 +108,7 @@ export async function POST(request: NextRequest) {
         projectTitle,
         projectUrl,
         !!existingUser,
+        personalMessage,
       )
     } catch (emailError) {
       console.error("Failed to send review invitation email:", emailError)
