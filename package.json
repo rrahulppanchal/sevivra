@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aarkue/tiptap-math-extension": "^1.4.0",
+    "@fortune-sheet/react": "^1.0.4",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -55,14 +56,17 @@
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
+    "hyperformula": "^3.2.0",
     "input-otp": "1.4.1",
     "jsonwebtoken": "^9.0.3",
     "katex": "^0.16.40",
     "lucide-react": "^0.454.0",
+    "mammoth": "^1.12.0",
     "mongoose": "^9.1.2",
     "next": "16.0.10",
     "next-themes": "^0.4.6",
     "nodemailer": "^8.0.3",
+    "pdf-parse": "1.1.1",
     "react": "19.2.0",
     "react-day-picker": "9.8.0",
     "react-dom": "19.2.0",
@@ -73,6 +77,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
+    "xlsx": "^0.18.5",
     "zod": "3.25.76"
   },
   "devDependencies": {

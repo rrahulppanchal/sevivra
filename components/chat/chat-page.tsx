@@ -1,18 +1,22 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import type { ElementType } from "react"
-import { Send, Plus, List, Image as ImageIcon, X, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp, Brain, Search, Pencil, BarChart3, Trash2, Download, PieChart, TrendingUp, Activity, Sigma, Radical } from "lucide-react"
+import { Send, Plus, List, Image as ImageIcon, X, Bold, Italic, Link as LinkIcon, ArrowUp, MessageCircle, ChevronDown, ChevronUp, Brain, Search, Pencil, BarChart3, Trash2, Download, PieChart, TrendingUp, Activity, Sigma, Radical, MoreVertical, Rows3, Columns3, FileSpreadsheet, Upload, Loader2 } from "lucide-react"
 import { BarChart, Bar, LineChart, Line, PieChart as RechartsPieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import { cn } from "@/lib/utils"
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/rich-text-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ChatHeader } from "../layout/ChatHeader"
 import { useAuth } from "@/hooks/use-auth"
+import dynamic from "next/dynamic"
+
+const SpreadsheetEditor = dynamic(() => import("@/components/chat/spreadsheet-editor"), { ssr: false })
 import { useParams, useRouter } from "next/navigation"
 
 interface ChatMessage {
@@ -224,10 +228,39 @@ export default function ChatPage() {
   const [spreadsheetData, setSpreadsheetData] = useState<CellData[]>([])
   const [spreadsheetLoading, setSpreadsheetLoading] = useState(false)
   const [spreadsheetSaveStatus, setSpreadsheetSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: string } | null>(null)
-  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null)
-  const [editValue, setEditValue] = useState("")
   const spreadsheetSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // AI inline review state
+  const [pendingAIUpdates, setPendingAIUpdates] = useState<{
+    updates: Array<{ row: number; col: string; value: string }>
+    addRows?: number
+    chartConfig?: { type?: string; title?: string; xAxis?: string; yAxis?: string[] }
+  } | null>(null)
+
+  const handleAcceptAIChanges = () => {
+    if (pendingAIUpdates) {
+      if (pendingAIUpdates.updates.length > 0) {
+        applySpreadsheetUpdates(pendingAIUpdates.updates, pendingAIUpdates.addRows)
+      }
+      if (pendingAIUpdates.chartConfig) {
+        addChartFromAI(pendingAIUpdates.chartConfig)
+      }
+    }
+    setPendingAIUpdates(null)
+  }
+
+  const handleRejectAIChanges = () => {
+    setPendingAIUpdates(null)
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        type: "ai",
+        content: "Changes were rejected. The spreadsheet was not modified.",
+        timestamp: new Date(),
+      },
+    ])
+  }
 
   // Load spreadsheet data from DB
   useEffect(() => {
@@ -288,14 +321,6 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spreadsheetData, projectId, isOwner])
 
-  const updateCell = (row: number, col: string, value: string) => {
-    setSpreadsheetData((prev) => {
-      const next = [...prev]
-      next[row] = { ...next[row], [col]: value }
-      return next
-    })
-  }
-
   const addSpreadsheetRow = () => {
     const cols = Object.keys(spreadsheetData[0] || {}).sort()
     const newRow: CellData = {}
@@ -342,9 +367,16 @@ export default function ChatPage() {
         next.push(newRow)
       }
 
-      // Apply cell updates
+      // Apply cell updates (only valid columns A-Z)
+      const validCols = new Set(Object.keys(next[0] || {}))
       for (const update of updates) {
-        if (update.row >= 0 && update.row < next.length) {
+        if (
+          update.row >= 0 &&
+          update.row < next.length &&
+          typeof update.col === "string" &&
+          /^[A-Z]$/.test(update.col) &&
+          validCols.has(update.col)
+        ) {
           next[update.row] = { ...next[update.row], [update.col]: update.value }
         }
       }
@@ -357,8 +389,9 @@ export default function ChatPage() {
     if (spreadsheetData.length === 0) return ""
     const cols = Object.keys(spreadsheetData[0]).sort()
     const header = cols.join("\t")
+    const escapeCell = (val: string) => val.replace(/[\t\n\r]/g, " ")
     const rows = spreadsheetData.map((row) =>
-      cols.map((c) => row[c] || "").join("\t")
+      cols.map((c) => escapeCell(row[c] || "")).join("\t")
     )
     return `${header}\n${rows.join("\n")}`
   }
@@ -447,13 +480,28 @@ export default function ChatPage() {
     setCharts((prev) => prev.filter((c) => c.id !== id))
   }
 
-  const addChartFromAI = (chartConfig: { type?: string; title?: string; xAxis?: string; yAxis?: string[] }) => {
+  const addChartFromAI = (chartConfig: { type?: string; title?: string; xAxis?: string; yAxis?: string[] }): boolean => {
     const cols = Object.keys(spreadsheetData[0] || {}).sort()
+    if (cols.length === 0) {
+      setMessages((prev) => [...prev, {
+        id: Date.now().toString(), type: "ai",
+        content: "Could not create chart — the spreadsheet has no columns. Add some data first.",
+        timestamp: new Date(),
+      }])
+      return false
+    }
     const type = (["bar", "line", "area", "pie"].includes(chartConfig.type || "") ? chartConfig.type : "bar") as ChartType
-    const xAxis = chartConfig.xAxis && cols.includes(chartConfig.xAxis) ? chartConfig.xAxis : cols[0] || "A"
+    const xAxis = chartConfig.xAxis && cols.includes(chartConfig.xAxis) ? chartConfig.xAxis : cols[0]
     const yAxis = (chartConfig.yAxis || []).filter((c) => cols.includes(c))
     if (yAxis.length === 0 && cols.length > 1) yAxis.push(cols[1])
-    if (yAxis.length === 0) return
+    if (yAxis.length === 0) {
+      setMessages((prev) => [...prev, {
+        id: Date.now().toString(), type: "ai",
+        content: "Could not create chart — not enough columns for a chart. Need at least 2 columns with data.",
+        timestamp: new Date(),
+      }])
+      return false
+    }
 
     const newChart: ChartConfig = {
       id: Date.now().toString(),
@@ -464,6 +512,7 @@ export default function ChatPage() {
       colors: CHART_COLORS.slice(0, yAxis.length),
     }
     setCharts((prev) => [...prev, newChart])
+    return true
   }
 
   const availableChatModes = useMemo(() => {
@@ -518,6 +567,19 @@ export default function ChatPage() {
   const [modeDropdownOpen, setModeDropdownOpen] = useState(false)
   const [showLatexDialog, setShowLatexDialog] = useState<"inline" | "block" | null>(null)
   const [latexInput, setLatexInput] = useState("")
+
+  // File import state
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const spreadsheetImportInputRef = useRef<HTMLInputElement>(null)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [showDocImportDialog, setShowDocImportDialog] = useState(false)
+  const [pendingDocHtml, setPendingDocHtml] = useState<string | null>(null)
+  const [showSpreadsheetImportConfirm, setShowSpreadsheetImportConfirm] = useState(false)
+  const [pendingSpreadsheetImport, setPendingSpreadsheetImport] = useState<{
+    data: Array<Record<string, string>>
+    columns: string[]
+  } | null>(null)
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [linkUrl, setLinkUrl] = useState("")
   const modeDropdownRef = useRef<HTMLDivElement>(null)
@@ -1119,14 +1181,19 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, aiMessage])
 
-      // Handle spreadsheet updates from AI
+      // Handle spreadsheet updates from AI — ask for confirmation first
       if (activeView === "data-analysis" && isOwner && Array.isArray(result?.spreadsheetUpdates) && result.spreadsheetUpdates.length > 0) {
-        applySpreadsheetUpdates(result.spreadsheetUpdates, result.addRows || undefined)
-      }
-
-      // Handle chart creation from AI
-      if (activeView === "data-analysis" && result?.chartConfig) {
-        addChartFromAI(result.chartConfig)
+        setPendingAIUpdates({
+          updates: result.spreadsheetUpdates,
+          addRows: result.addRows || undefined,
+          chartConfig: result.chartConfig || undefined,
+        })
+      } else if (activeView === "data-analysis" && isOwner && result?.chartConfig) {
+        // Chart-only (no cell updates) — still ask confirmation
+        setPendingAIUpdates({
+          updates: [],
+          chartConfig: result.chartConfig,
+        })
       }
 
       // Handle manuscript updates
@@ -1432,6 +1499,122 @@ export default function ChatPage() {
     setImageError(null)
   }
 
+  // --- File Import Handlers ---
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>, target: "document" | "spreadsheet") => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const MAX_SIZE = 10 * 1024 * 1024 // 10MB
+    if (file.size > MAX_SIZE) {
+      setImportError("File must be 10MB or less.")
+      event.target.value = ""
+      return
+    }
+
+    // Validate file extension
+    const ext = file.name.split(".").pop()?.toLowerCase()
+    const docExts = ["pdf", "docx", "txt"]
+    const sheetExts = ["xlsx", "xls", "csv"]
+    const allExts = [...docExts, ...sheetExts]
+
+    if (!ext || !allExts.includes(ext)) {
+      setImportError("Unsupported file type. Supported: PDF, DOCX, TXT, XLSX, XLS, CSV")
+      event.target.value = ""
+      return
+    }
+
+    if (ext === "doc") {
+      setImportError("Legacy .doc format is not supported. Please save as .docx and try again.")
+      event.target.value = ""
+      return
+    }
+
+    setImportLoading(true)
+    setImportError(null)
+
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const result = typeof reader.result === "string" ? reader.result : ""
+        if (!result.startsWith("data:")) {
+          setImportError("Failed to read file.")
+          return
+        }
+        const base64 = result.split(",")[1]
+        if (!base64) {
+          setImportError("Failed to read file.")
+          return
+        }
+
+        const response = await fetch("/api/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileData: base64,
+            fileType: file.type || ({
+              pdf: "application/pdf",
+              docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              txt: "text/plain",
+              xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              xls: "application/vnd.ms-excel",
+              csv: "text/csv",
+            }[ext!] ?? "application/octet-stream"),
+            fileName: file.name,
+          }),
+        })
+
+        const data = await response.json()
+        if (!response.ok) {
+          setImportError(data.error || "Import failed.")
+          return
+        }
+
+        if (data.type === "document") {
+          setPendingDocHtml(data.html)
+          setShowDocImportDialog(true)
+        } else if (data.type === "spreadsheet") {
+          setPendingSpreadsheetImport({ data: data.data, columns: data.columns })
+          setShowSpreadsheetImportConfirm(true)
+        }
+      } catch {
+        setImportError("Import failed. Please try again.")
+      } finally {
+        setImportLoading(false)
+      }
+    }
+    reader.onerror = () => {
+      setImportError("Failed to read file.")
+      setImportLoading(false)
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ""
+  }
+
+  const handleDocImportAppend = () => {
+    if (pendingDocHtml) {
+      const separator = documentContent.trim() ? "\n<hr />\n" : ""
+      setDocumentContent(documentContent + separator + pendingDocHtml)
+    }
+    setPendingDocHtml(null)
+    setShowDocImportDialog(false)
+  }
+
+  const handleDocImportReplace = () => {
+    if (pendingDocHtml) {
+      setDocumentContent(pendingDocHtml)
+    }
+    setPendingDocHtml(null)
+    setShowDocImportDialog(false)
+  }
+
+  const handleSpreadsheetImportConfirm = () => {
+    if (pendingSpreadsheetImport) {
+      setSpreadsheetData(pendingSpreadsheetImport.data)
+    }
+    setPendingSpreadsheetImport(null)
+    setShowSpreadsheetImportConfirm(false)
+  }
+
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -1482,6 +1665,104 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen bg-[#F5F1E6]">
+      {/* Hidden file inputs for import */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".pdf,.docx,.txt,.xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => handleFileImport(e, "document")}
+      />
+      <input
+        ref={spreadsheetImportInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => handleFileImport(e, "spreadsheet")}
+      />
+
+      {/* Document Import Mode Dialog */}
+      <Dialog open={showDocImportDialog} onOpenChange={setShowDocImportDialog}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-[#1DA619]" />
+              Import Content
+            </DialogTitle>
+            <DialogDescription>
+              How should the imported content be added to your manuscript?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDocImportDialog(false)
+                setPendingDocHtml(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDocImportReplace}
+              className="border-[#F26419]/30 text-[#F26419] hover:bg-[#F26419]/5"
+            >
+              Replace All
+            </Button>
+            <Button
+              onClick={handleDocImportAppend}
+              className="bg-[#1DA619] hover:bg-[#158514] text-white"
+            >
+              Append
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Spreadsheet Import Confirm Dialog */}
+      <Dialog open={showSpreadsheetImportConfirm} onOpenChange={setShowSpreadsheetImportConfirm}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-[#F26419]" />
+              Replace Spreadsheet Data?
+            </DialogTitle>
+            <DialogDescription>
+              Importing will replace your current spreadsheet data with the contents of the uploaded file. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowSpreadsheetImportConfirm(false)
+                setPendingSpreadsheetImport(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSpreadsheetImportConfirm}
+              className="bg-[#F26419] hover:bg-[#d4550f] text-white"
+            >
+              Replace Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Error Toast */}
+      {importError && (
+        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm max-w-sm animate-in fade-in slide-in-from-top-2">
+          <X
+            className="h-4 w-4 cursor-pointer flex-shrink-0"
+            onClick={() => setImportError(null)}
+          />
+          {importError}
+        </div>
+      )}
+
       {/* Link Insert Dialog */}
       <Dialog open={showLinkModal} onOpenChange={setShowLinkModal}>
         <DialogContent className="sm:max-w-[420px]">
@@ -2328,6 +2609,17 @@ export default function ChatPage() {
 
                     {/* Right: Status & Actions */}
                     <div className="flex items-center gap-1.5">
+                      {!isReviewing && (
+                        <button
+                          onClick={() => importInputRef.current?.click()}
+                          disabled={importLoading}
+                          className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 text-[11px] font-medium text-[#6B7280] hover:text-[#1DA619] hover:bg-[#1DA619]/5 border border-transparent hover:border-[#1DA619]/20 transition-all disabled:opacity-50"
+                          title="Import from file (PDF, DOCX, TXT, XLSX, CSV)"
+                        >
+                          {importLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                          Import
+                        </button>
+                      )}
                       {isReviewing && (
                         <div className="flex items-center gap-1.5 mr-1">
                           <span className="text-[10px] font-semibold text-[#F26419] bg-[#F26419]/8 px-2 py-1 rounded-md">
@@ -2389,7 +2681,15 @@ export default function ChatPage() {
               </div>
 
               {/* Document Content */}
-              <div className="flex-1 overflow-y-auto p-4 lg:p-8 flex justify-center items-start bg-[#eae6da]">
+              <div className="flex-1 overflow-y-auto p-4 lg:p-8 flex justify-center items-start bg-[#eae6da] relative">
+                {importLoading && (
+                  <div className="absolute inset-0 z-30 bg-[#eae6da]/80 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3 bg-white rounded-xl px-6 py-5 shadow-lg border border-[#E5E0D4]">
+                      <Loader2 className="h-6 w-6 animate-spin text-[#1DA619]" />
+                      <p className="text-sm font-medium text-[#4B5563]">Importing file...</p>
+                    </div>
+                  </div>
+                )}
                 <div
                   ref={editorContainerRef}
                   className="max-w-[816px] w-full bg-white shadow-md shadow-black/8 min-h-[1056px] px-[72px] py-[60px] relative break-words [overflow-wrap:anywhere]"
@@ -2480,208 +2780,143 @@ export default function ChatPage() {
           ) : (
             <>
               {/* Spreadsheet Toolbar */}
-              <div className="h-12 bg-white/90 backdrop-blur-sm border-b border-[#E5E0D4] flex items-center px-4 justify-between z-10">
+              <div className="h-11 bg-white border-b border-[#E5E0D4] flex items-center px-4 justify-between z-10">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F26419]/5">
-                    <BarChart3 className="h-3.5 w-3.5 text-[#F26419]" />
-                    <span className="text-xs font-semibold text-[#F26419]">Data Analysis</span>
-                  </div>
-                  <div className="h-5 w-px bg-[#E5E0D4] mx-1" />
-                  {selectedCell && (
-                    <span className="text-[11px] font-mono text-[#6B7280] bg-[#F5F1E6] px-2 py-1 rounded-md">
-                      {selectedCell.col}{selectedCell.row + 1}
-                    </span>
-                  )}
                   <span className="text-[11px] text-[#9CA3AF]">
                     {spreadsheetData.length} rows &middot; {Object.keys(spreadsheetData[0] || {}).length} cols
                   </span>
                   {!isOwner && (
                     <>
-                      <div className="h-5 w-px bg-[#E5E0D4] mx-1" />
-                      <span className="text-[11px] font-medium text-[#9CA3AF] px-2 py-1 rounded-md bg-[#F5F1E6]">
+                      <div className="h-4 w-px bg-[#E5E0D4]" />
+                      <span className="text-[10px] font-medium text-[#9CA3AF] px-1.5 py-0.5 rounded bg-[#F5F1E6]">
                         View only
                       </span>
                     </>
                   )}
+                  {isOwner && !pendingAIUpdates && (
+                    <span className={cn(
+                      "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                      spreadsheetSaveStatus === "saving" && "text-[#F26419] bg-[#F26419]/5",
+                      spreadsheetSaveStatus === "saved" && "text-[#1DA619] bg-[#1DA619]/5",
+                      spreadsheetSaveStatus === "error" && "text-red-500 bg-red-50",
+                      spreadsheetSaveStatus === "idle" && "text-transparent",
+                    )}>
+                      {spreadsheetSaveStatus === "saving" && "Saving..."}
+                      {spreadsheetSaveStatus === "saved" && "Saved"}
+                      {spreadsheetSaveStatus === "error" && "Error"}
+                      {spreadsheetSaveStatus === "idle" && ""}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {isOwner && (
-                    <>
-                      <span className={cn(
-                        "text-[11px] font-medium px-2 py-1 rounded-md",
-                        spreadsheetSaveStatus === "saving" && "text-[#F26419] bg-[#F26419]/5",
-                        spreadsheetSaveStatus === "saved" && "text-[#1DA619] bg-[#1DA619]/5",
-                        spreadsheetSaveStatus === "error" && "text-red-500 bg-red-50",
-                        spreadsheetSaveStatus === "idle" && "text-[#9CA3AF]",
-                      )}>
-                        {spreadsheetSaveStatus === "saving" && "Saving..."}
-                        {spreadsheetSaveStatus === "saved" && "Saved"}
-                        {spreadsheetSaveStatus === "error" && "Save failed"}
-                        {spreadsheetSaveStatus === "idle" && ""}
+                  {pendingAIUpdates && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold text-[#F26419] bg-[#F26419]/8 px-2 py-1 rounded-md">
+                        Reviewing
                       </span>
-                      <Button
-                        variant="outline"
-                        onClick={addSpreadsheetRow}
-                        className="h-8 text-xs border-[#E5E0D4] hover:border-[#1DA619]/30 hover:text-[#1DA619] hover:bg-[#1DA619]/5"
+                      <button
+                        onClick={handleRejectAIChanges}
+                        className="h-7 px-2.5 rounded-lg text-[11px] font-medium border border-[#E5E0D4] text-[#6B7280] hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all"
                       >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Row
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={addSpreadsheetColumn}
-                        className="h-8 text-xs border-[#E5E0D4] hover:border-[#1DA619]/30 hover:text-[#1DA619] hover:bg-[#1DA619]/5"
+                        Reject
+                      </button>
+                      <button
+                        onClick={handleAcceptAIChanges}
+                        className="h-7 px-2.5 rounded-lg text-[11px] font-medium bg-[#1DA619] text-white hover:bg-[#158514] transition-all"
                       >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Column
-                      </Button>
-                      <div className="h-5 w-px bg-[#E5E0D4] mx-0.5" />
-                    </>
+                        Accept
+                      </button>
+                    </div>
                   )}
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowChartBuilder(true)}
-                    disabled={spreadsheetData.length === 0}
-                    className="h-8 text-xs border-[#E5E0D4] hover:border-[#F26419]/30 hover:text-[#F26419] hover:bg-[#F26419]/5"
-                  >
-                    <PieChart className="h-3.5 w-3.5 mr-1" />
-                    Add Chart
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={exportSpreadsheetCsv}
-                    className="h-8 text-xs border-[#E5E0D4] hover:border-[#F26419]/30 hover:text-[#F26419] hover:bg-[#F26419]/5"
-                  >
-                    <Download className="h-3.5 w-3.5 mr-1" />
-                    Export CSV
-                  </Button>
+                  {!pendingAIUpdates && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="h-8 w-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#374151] hover:bg-[#F5F1E6] transition-colors">
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {isOwner && (
+                          <>
+                            <DropdownMenuItem onClick={addSpreadsheetRow} className="text-xs gap-2 cursor-pointer">
+                              <Rows3 className="h-3.5 w-3.5 text-[#6B7280]" />
+                              Add Row
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={addSpreadsheetColumn} className="text-xs gap-2 cursor-pointer">
+                              <Columns3 className="h-3.5 w-3.5 text-[#6B7280]" />
+                              Add Column
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                        <DropdownMenuItem
+                          onClick={() => setShowChartBuilder(true)}
+                          disabled={spreadsheetData.length === 0}
+                          className="text-xs gap-2 cursor-pointer"
+                        >
+                          <PieChart className="h-3.5 w-3.5 text-[#6B7280]" />
+                          Add Chart
+                        </DropdownMenuItem>
+                        {isOwner && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => spreadsheetImportInputRef.current?.click()}
+                              disabled={importLoading}
+                              className="text-xs gap-2 cursor-pointer"
+                            >
+                              {importLoading ? <Loader2 className="h-3.5 w-3.5 text-[#6B7280] animate-spin" /> : <Upload className="h-3.5 w-3.5 text-[#6B7280]" />}
+                              Import File
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                        <DropdownMenuItem onClick={exportSpreadsheetCsv} className="text-xs gap-2 cursor-pointer">
+                          <Download className="h-3.5 w-3.5 text-[#6B7280]" />
+                          Export CSV
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
 
               {/* Spreadsheet Content */}
-              <div className="flex-1 overflow-auto p-4 lg:p-6">
+              <div className="flex-1 overflow-hidden">
                 {spreadsheetLoading ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     <div className="h-8 w-8 border-2 border-[#E5E0D4] border-t-[#F26419] rounded-full animate-spin mb-3" />
                     <p className="text-sm text-[#9CA3AF]">Loading spreadsheet...</p>
                   </div>
-                ) : (
-                <>
-                <div className="bg-white rounded-xl border border-[#E5E0D4]/60 shadow-sm shadow-black/5 overflow-hidden">
-                  <div className="overflow-auto">
-                    <table className="w-full border-collapse min-w-max">
-                      <thead>
-                        <tr>
-                          <th className="sticky left-0 z-10 w-12 h-9 bg-[#FAFAF7] border-b border-r border-[#E5E0D4] text-[10px] font-bold text-[#9CA3AF] uppercase" />
-                          {Object.keys(spreadsheetData[0] || {}).sort().map((col) => (
-                            <th
-                              key={col}
-                              className="h-9 min-w-[120px] bg-[#FAFAF7] border-b border-r border-[#E5E0D4] text-[11px] font-bold text-[#6B7280] uppercase tracking-wider px-3 text-center"
-                            >
-                              {col}
-                            </th>
-                          ))}
-                          {isOwner && <th className="w-10 h-9 bg-[#FAFAF7] border-b border-[#E5E0D4]" />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {spreadsheetData.map((row, rowIndex) => (
-                          <tr key={rowIndex} className="group">
-                            <td className="sticky left-0 z-10 w-12 h-9 bg-[#FAFAF7] border-b border-r border-[#E5E0D4] text-center text-[11px] font-medium text-[#9CA3AF]">
-                              {rowIndex + 1}
-                            </td>
-                            {Object.keys(row).sort().map((col) => {
-                              const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === col
-                              const isEditing = editingCell?.row === rowIndex && editingCell?.col === col
-                              return (
-                                <td
-                                  key={col}
-                                  className={cn(
-                                    "h-9 min-w-[120px] border-b border-r border-[#E5E0D4] px-0 relative transition-colors",
-                                    isSelected && !isEditing && "ring-2 ring-inset ring-[#1DA619] bg-[#1DA619]/[0.03]",
-                                    !isSelected && "hover:bg-[#F5F1E6]/40"
-                                  )}
-                                  onClick={() => {
-                                    setSelectedCell({ row: rowIndex, col })
-                                    if (!isEditing) {
-                                      setEditingCell(null)
-                                    }
-                                  }}
-                                  onDoubleClick={() => {
-                                    if (!isOwner) return
-                                    setEditingCell({ row: rowIndex, col })
-                                    setEditValue(row[col] || "")
-                                  }}
-                                >
-                                  {isEditing ? (
-                                    <input
-                                      autoFocus
-                                      value={editValue}
-                                      onChange={(e) => setEditValue(e.target.value)}
-                                      onBlur={() => {
-                                        updateCell(rowIndex, col, editValue)
-                                        setEditingCell(null)
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          updateCell(rowIndex, col, editValue)
-                                          setEditingCell(null)
-                                          // Move to next row
-                                          if (rowIndex < spreadsheetData.length - 1) {
-                                            setSelectedCell({ row: rowIndex + 1, col })
-                                          }
-                                        } else if (e.key === "Escape") {
-                                          setEditingCell(null)
-                                        } else if (e.key === "Tab") {
-                                          e.preventDefault()
-                                          updateCell(rowIndex, col, editValue)
-                                          setEditingCell(null)
-                                          const cols = Object.keys(row).sort()
-                                          const colIdx = cols.indexOf(col)
-                                          if (colIdx < cols.length - 1) {
-                                            const nextCol = cols[colIdx + 1]
-                                            setSelectedCell({ row: rowIndex, col: nextCol })
-                                            setEditingCell({ row: rowIndex, col: nextCol })
-                                            setEditValue(row[nextCol] || "")
-                                          }
-                                        }
-                                      }}
-                                      className="w-full h-full px-2.5 text-xs text-[#1F2937] bg-white outline-none ring-2 ring-[#1DA619] absolute inset-0"
-                                    />
-                                  ) : (
-                                    <span className="block px-2.5 py-2 text-xs text-[#1F2937] truncate">
-                                      {row[col]}
-                                    </span>
-                                  )}
-                                </td>
-                              )
-                            })}
-                            {isOwner && (
-                              <td className="w-10 h-9 border-b border-[#E5E0D4] text-center">
-                                <button
-                                  onClick={() => deleteSpreadsheetRow(rowIndex)}
-                                  className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-md inline-flex items-center justify-center text-[#D1D5DB] hover:text-red-500 hover:bg-red-50 transition-all"
-                                  title="Delete row"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {spreadsheetData.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-20">
-                      <div className="h-14 w-14 rounded-2xl bg-[#F5F1E6] flex items-center justify-center mb-4">
-                        <BarChart3 className="h-7 w-7 text-[#C4BFB3]" />
-                      </div>
-                      <p className="text-sm font-medium text-[#6B7280] mb-1">No data yet</p>
-                      <p className="text-xs text-[#9CA3AF]">Add rows and start entering your data, or ask AI to help populate it.</p>
+                ) : spreadsheetData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="h-14 w-14 rounded-2xl bg-[#F5F1E6] flex items-center justify-center mb-4">
+                      <BarChart3 className="h-7 w-7 text-[#C4BFB3]" />
                     </div>
-                  )}
-                </div>
+                    <p className="text-sm font-medium text-[#6B7280] mb-1">No data yet</p>
+                    <p className="text-xs text-[#9CA3AF]">Add rows and start entering your data, or ask AI to help populate it.</p>
+                  </div>
+                ) : (
+                  <SpreadsheetEditor
+                    data={spreadsheetData}
+                    isOwner={isOwner}
+                    pendingAIUpdates={pendingAIUpdates}
+                    onDataChange={setSpreadsheetData}
+                  />
+                )}
+              </div>
+
+              {/* Charts + Accept/Reject below spreadsheet */}
+              <div className="overflow-auto p-4 lg:p-6">
+                {pendingAIUpdates && (
+                  <div className="mb-4 flex items-center justify-end gap-2">
+                    <Button variant="outline" onClick={handleRejectAIChanges}>
+                      Reject
+                    </Button>
+                    <Button onClick={handleAcceptAIChanges} className="bg-[#1DA619] text-white hover:bg-[#158514]">
+                      Accept
+                    </Button>
+                  </div>
+                )}
 
                 {/* Charts */}
                 {charts.length > 0 && (
@@ -2839,8 +3074,6 @@ export default function ChatPage() {
                       )
                     })}
                   </div>
-                )}
-                </>
                 )}
               </div>
 

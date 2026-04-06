@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "savivra",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3001
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=$HOME/.nvm/versions/node/v22.21.0/bin:$PATH && npm run dev"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
