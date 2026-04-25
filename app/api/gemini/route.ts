@@ -17,13 +17,50 @@ type GeminiResponse = {
   }
 }
 
-const buildPrompt = (message: string, documentContent: string, manuscriptTitle?: string) => {
+const buildPrompt = (
+  message: string,
+  documentContent: string,
+  manuscriptTitle?: string,
+  references: string[] = [],
+  mode: string = "writing",
+  spreadsheetData?: string,
+) => {
+  if (spreadsheetData) {
+    return [
+      "You are a data analysis assistant embedded in a spreadsheet editor.",
+      "Return ONLY valid JSON.",
+      "Always include: reply (string) — a human-readable explanation of what you did or found.",
+      "If the user asks you to modify, populate, or fill spreadsheet data, include spreadsheetUpdates: an array of { row: number (0-indexed), col: string (column letter), value: string }.",
+      "If you are adding new rows beyond the current data, include addRows: number (how many rows to add).",
+      "If no changes are needed, set spreadsheetUpdates to null.",
+      "If the user asks to create a chart or visualize data, include chartConfig: { type: 'bar'|'line'|'area'|'pie', title: string, xAxis: string (column letter for X axis), yAxis: string[] (column letters for Y axis/values) }.",
+      "You can include both spreadsheetUpdates AND chartConfig in a single response if the user asks to both modify data and create a chart.",
+      "Do NOT include updatedContent or replacements.",
+      "",
+      "Current spreadsheet data (tab-separated):",
+      spreadsheetData,
+      "",
+      "User command:",
+      message,
+    ].join("\n")
+  }
+
   return [
     "You are an academic writing assistant embedded in a manuscript editor.",
-    "Return ONLY valid JSON with keys: reply (string) and updatedContent (string or null).",
-    "If the user asks to edit the manuscript, set updatedContent to the FULL HTML content.",
-    "If no changes are needed, set updatedContent to null.",
+    "Return ONLY valid JSON.",
+    "Always include: reply (string).",
+    "If mode is reasoning or research: do NOT update the manuscript. Set updatedContent to null.",
+    "If mode is writing:",
+    "- If references are provided, return replacements: [{ original: string, replacement: string }]. Set updatedContent to null.",
+    "- If no references, you may return updatedContent as FULL HTML content.",
     `Active manuscript: ${manuscriptTitle || "Unknown"}`,
+    `Mode: ${mode}`,
+    ...(references.length > 0
+      ? [
+          "Selected references (user-highlighted excerpts to focus edits on):",
+          ...references.map((ref, index) => `Ref ${index + 1}: ${ref}`),
+        ]
+      : []),
     "Current manuscript HTML:",
     documentContent,
     "User command:",
@@ -43,21 +80,30 @@ export async function POST(request: Request) {
     const documentContent = typeof body?.documentContent === "string" ? body.documentContent : ""
     const manuscriptTitle = typeof body?.manuscriptTitle === "string" ? body.manuscriptTitle : undefined
     const requestedModel = typeof body?.model === "string" ? body.model : "gemini-1.5-pro"
+    const mode = typeof body?.mode === "string" ? body.mode : "writing"
+    const references = Array.isArray(body?.references)
+      ? body.references.filter((item: unknown) => typeof item === "string")
+      : []
     const imageData = typeof body?.imageData === "string" ? body.imageData : undefined
     const imageMimeType = typeof body?.imageMimeType === "string" ? body.imageMimeType : undefined
+    const spreadsheetDataStr = typeof body?.spreadsheetData === "string" ? body.spreadsheetData : undefined
 
-    if (!message.trim() && !imageData) {
-      return NextResponse.json({ error: "Message or image is required." }, { status: 400 })
+    if (!message.trim() && !imageData && references.length === 0) {
+      return NextResponse.json({ error: "Message, references, or image is required." }, { status: 400 })
     }
 
     if (imageData) {
       try {
         const bytes = Buffer.from(imageData, "base64").length
-        if (bytes > 2 * 1024 * 1024) {
-          return NextResponse.json({ error: "Image exceeds 2MB limit." }, { status: 400 })
+        const limit = imageMimeType === "application/pdf" ? 10 * 1024 * 1024 : 2 * 1024 * 1024
+        if (bytes > limit) {
+          return NextResponse.json(
+            { error: imageMimeType === "application/pdf" ? "PDF exceeds 10MB limit." : "File exceeds 2MB limit." },
+            { status: 400 },
+          )
         }
       } catch {
-        return NextResponse.json({ error: "Invalid image data." }, { status: 400 })
+        return NextResponse.json({ error: "Invalid file data." }, { status: 400 })
       }
     }
 
@@ -74,14 +120,16 @@ export async function POST(request: Request) {
 
     const promptMessage = message.trim()
       ? message
-      : "Analyze the attached image and respond to the request."
+      : references.length > 0
+        ? "Use the selected references to guide your edits."
+        : "Analyze the attached image and respond to the request."
 
     const payload = {
       contents: [
         {
           role: "user",
           parts: [
-            { text: buildPrompt(promptMessage, documentContent, manuscriptTitle) },
+            { text: buildPrompt(promptMessage, documentContent, manuscriptTitle, references, mode, spreadsheetDataStr) },
             ...(imageData
               ? [
                   {
@@ -126,20 +174,45 @@ export async function POST(request: Request) {
 
     let reply = text
     let updatedContent: string | null = null
+    let replacements: Array<{ original: string; replacement: string }> | null = null
+    let spreadsheetUpdates: Array<{ row: number; col: string; value: string }> | null = null
+    let addRows: number | null = null
+    let chartConfig: { type?: string; title?: string; xAxis?: string; yAxis?: string[] } | null = null
 
-    try {
-      const result = JSON.parse(text)
+    const extractFromResult = (result: any) => {
       reply = typeof result.reply === "string" ? result.reply : reply
       updatedContent = typeof result.updatedContent === "string" ? result.updatedContent : null
+      if (Array.isArray(result.replacements)) {
+        replacements = result.replacements
+          .filter((item: any) => item && typeof item.original === "string" && typeof item.replacement === "string")
+          .map((item: any) => ({ original: item.original, replacement: item.replacement }))
+      }
+      if (Array.isArray(result.spreadsheetUpdates)) {
+        spreadsheetUpdates = result.spreadsheetUpdates
+          .filter((item: any) => item && typeof item.row === "number" && typeof item.col === "string" && typeof item.value === "string")
+          .map((item: any) => ({ row: item.row, col: item.col, value: item.value }))
+      }
+      if (typeof result.addRows === "number" && result.addRows > 0) {
+        addRows = result.addRows
+      }
+      if (result.chartConfig && typeof result.chartConfig === "object") {
+        chartConfig = {
+          type: typeof result.chartConfig.type === "string" ? result.chartConfig.type : undefined,
+          title: typeof result.chartConfig.title === "string" ? result.chartConfig.title : undefined,
+          xAxis: typeof result.chartConfig.xAxis === "string" ? result.chartConfig.xAxis : undefined,
+          yAxis: Array.isArray(result.chartConfig.yAxis) ? result.chartConfig.yAxis.filter((v: any) => typeof v === "string") : undefined,
+        }
+      }
+    }
+
+    try {
+      extractFromResult(JSON.parse(text))
     } catch {
       try {
         const jsonStart = text.indexOf("{")
         const jsonEnd = text.lastIndexOf("}")
         if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonText = text.slice(jsonStart, jsonEnd + 1)
-          const result = JSON.parse(jsonText)
-          reply = typeof result.reply === "string" ? result.reply : reply
-          updatedContent = typeof result.updatedContent === "string" ? result.updatedContent : null
+          extractFromResult(JSON.parse(text.slice(jsonStart, jsonEnd + 1)))
         }
       } catch {
         const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(text)
@@ -150,7 +223,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ reply, updatedContent })
+    return NextResponse.json({ reply, updatedContent, replacements, spreadsheetUpdates, addRows, chartConfig })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gemini request failed."
     return NextResponse.json({ error: message }, { status: 500 })

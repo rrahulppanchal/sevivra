@@ -8,6 +8,7 @@ export interface IProject extends Document {
   description: string
   users: mongoose.Types.ObjectId[]
   type: ProjectType
+  visibility: 'private' | 'public'
   createdDate: Date
   createdAt: Date
   updatedAt: Date
@@ -45,6 +46,11 @@ const ProjectSchema: Schema = new Schema(
       enum: ['Journal Articles', 'Conference Papers', 'Books & Chapters', 'Preprints'],
       required: [true, 'Type is required'],
     },
+    visibility: {
+      type: String,
+      enum: ['private', 'public'],
+      default: 'private',
+    },
     createdDate: {
       type: Date,
       default: Date.now,
@@ -57,10 +63,11 @@ const ProjectSchema: Schema = new Schema(
 
 ProjectSchema.index({ type: 1 })
 ProjectSchema.index({ createdDate: -1 })
+ProjectSchema.index({ visibility: 1 })
 
 const existingProjectModel = mongoose.models.Project as Model<IProject> | undefined
 
-if (existingProjectModel?.schema?.path('owner')) {
+if (existingProjectModel && (!existingProjectModel.schema?.path('visibility') || existingProjectModel.schema?.path('owner'))) {
   delete mongoose.models.Project
 }
 

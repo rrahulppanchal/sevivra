@@ -1,19 +1,32 @@
 "use client"
 
 import { Header } from "@/components/layout/header"
-import { Button } from "@/components/ui/button"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Filter, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react"
+import {
+  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Pencil, Trash2,
+  Plus, FolderOpen, Users, Clock, ArrowUpRight, SlidersHorizontal,
+  Lock, Globe, Search,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
 
 type ProjectType = "Journal Articles" | "Conference Papers" | "Books & Chapters" | "Preprints"
 
@@ -24,6 +37,7 @@ interface Project {
   description: string
   users: string[]
   type: ProjectType
+  visibility?: "private" | "public"
   createdDate?: string
   createdAt?: string
 }
@@ -35,10 +49,17 @@ interface UserOption {
   role: "super_admin" | "user"
 }
 
+const typeColors: Record<ProjectType, string> = {
+  "Journal Articles": "text-[#1DA619] bg-[#1DA619]/8 border-[#1DA619]/15",
+  "Conference Papers": "text-[#F26419] bg-[#F26419]/8 border-[#F26419]/15",
+  "Books & Chapters": "text-indigo-600 bg-indigo-50 border-indigo-200",
+  "Preprints": "text-gray-500 bg-gray-50 border-gray-200",
+}
+
 export default function ProjectsPage() {
   const { user } = useAuth()
   const [selectedYear, setSelectedYear] = useState("All")
-  const [selectedTypes, setSelectedTypes] = useState<string[]>(["Journal Articles", "Conference Papers"])
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"])
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
@@ -49,6 +70,11 @@ export default function ProjectsPage() {
   const [usersOptions, setUsersOptions] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [collaboratorSearch, setCollaboratorSearch] = useState("")
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [tempYear, setTempYear] = useState("All")
+  const [tempTypes, setTempTypes] = useState<string[]>(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"])
   const [formState, setFormState] = useState({
     title: "",
     subtitle: "",
@@ -56,17 +82,14 @@ export default function ProjectsPage() {
     users: [] as string[],
     type: "Journal Articles" as ProjectType,
     createdDate: "",
+    visibility: "private" as "private" | "public",
   })
 
   useEffect(() => {
     if (!user) return
     setFormState((prev) => {
-      if (editingProject) {
-        return prev
-      }
-      if (prev.users.includes(user.id)) {
-        return prev
-      }
+      if (editingProject) return prev
+      if (prev.users.includes(user.id)) return prev
       return { ...prev, users: [...prev.users, user.id] }
     })
   }, [editingProject, user])
@@ -78,20 +101,14 @@ export default function ProjectsPage() {
         setListError(null)
         const response = await fetch("/api/projects")
         const payload = await response.json()
-
-        if (!response.ok) {
-          throw new Error(payload?.message || payload?.error || "Failed to fetch projects")
-        }
-
+        if (!response.ok) throw new Error(payload?.message || payload?.error || "Failed to fetch projects")
         setProjects(payload.data || [])
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to fetch projects"
-        setListError(message)
+        setListError(error instanceof Error ? error.message : "Failed to fetch projects")
       } finally {
         setIsLoading(false)
       }
     }
-
     fetchProjects()
   }, [])
 
@@ -102,103 +119,80 @@ export default function ProjectsPage() {
         setUsersError(null)
         const response = await fetch("/api/users")
         const payload = await response.json()
-
-        if (!response.ok) {
-          throw new Error(payload?.message || payload?.error || "Failed to fetch users")
-        }
-
+        if (!response.ok) throw new Error(payload?.message || payload?.error || "Failed to fetch users")
         setUsersOptions(payload.data || [])
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to fetch users"
-        setUsersError(message)
+        setUsersError(error instanceof Error ? error.message : "Failed to fetch users")
       } finally {
         setUsersLoading(false)
       }
     }
-
     fetchUsers()
   }, [])
 
   useEffect(() => {
-    if (isDialogOpen) {
-      setFormError(null)
-      setFormErrors({})
-    }
+    if (isDialogOpen) { setFormError(null); setFormErrors({}) }
   }, [isDialogOpen])
 
-  const toggleType = (type: string) => {
-    setSelectedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
-  }
-
-  const getTypeBadgeColor = (type: ProjectType) => {
-    switch (type) {
-      case "Conference Papers":
-        return "text-[#F26419] bg-[#F26419]/10"
-      case "Journal Articles":
-        return "text-[#1DA619] bg-[#1DA619]/10"
-      case "Books & Chapters":
-        return "text-[#6B7280] bg-[#6B7280]/10"
-      case "Preprints":
-        return "text-gray-500 bg-gray-200 dark:bg-gray-700"
-      default:
-        return "text-gray-500 bg-gray-200 dark:bg-gray-700"
-    }
-  }
-
   const filteredProjects = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
     return projects.filter((project) => {
       const typeMatch = selectedTypes.includes(project.type)
       const dateValue = project.createdDate || project.createdAt
       const year = dateValue ? new Date(dateValue).getFullYear() : null
-      const yearMatch =
-        selectedYear === "All" ||
+      const yearMatch = selectedYear === "All" ||
         (selectedYear === "Earlier" && year !== null && year < 2023) ||
         (selectedYear !== "Earlier" && selectedYear !== "All" && year === Number(selectedYear))
-
-      return typeMatch && yearMatch
+      const searchMatch = !query ||
+        project.title.toLowerCase().includes(query) ||
+        project.description.toLowerCase().includes(query) ||
+        (project.subtitle?.toLowerCase().includes(query) ?? false)
+      return typeMatch && yearMatch && searchMatch
     })
-  }, [projects, selectedTypes, selectedYear])
+  }, [projects, selectedTypes, selectedYear, searchQuery])
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [selectedTypes, selectedYear, projects])
-
-  const userNameMap = useMemo(() => {
-    return new Map(usersOptions.map((user) => [user.id, user.name]))
-  }, [usersOptions])
-
-  const selectedUsersLabel = useMemo(() => {
-    if (usersLoading) {
-      return "Loading users..."
-    }
-    if (usersError) {
-      return "Failed to load users"
-    }
-    if (formState.users.length === 0) {
-      return "Select users"
-    }
-    const names = usersOptions
-      .filter((user) => formState.users.includes(user.id))
-      .map((user) => user.name)
-    return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`
-  }, [formState.users, usersError, usersLoading, usersOptions])
-
-  const totalProjects = projects.length
-  const totalTypes = new Set(projects.map((project) => project.type)).size
-  const pageSize = 5
+  const pageSize = 6
   const [currentPage, setCurrentPage] = useState(1)
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / pageSize))
   const paginatedProjects = filteredProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
+  useEffect(() => { setCurrentPage(1) }, [selectedTypes, selectedYear, projects, searchQuery])
+
+  const userNameMap = useMemo(() => new Map(usersOptions.map((u) => [u.id, u.name])), [usersOptions])
+
+  const selectedUsersLabel = useMemo(() => {
+    if (usersLoading) return "Loading users..."
+    if (usersError) return "Failed to load users"
+    if (formState.users.length === 0) return "Select users"
+    const names = usersOptions.filter((u) => formState.users.includes(u.id)).map((u) => u.name)
+    return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`
+  }, [formState.users, usersError, usersLoading, usersOptions])
+
+  const filteredUsersOptions = useMemo(() => {
+    const term = collaboratorSearch.trim().toLowerCase()
+    if (!term) return usersOptions
+    return usersOptions.filter((o) => o.name.toLowerCase().includes(term) || o.email.toLowerCase().includes(term))
+  }, [collaboratorSearch, usersOptions])
+
   const formatProjectDate = (value?: string) => {
-    if (!value) {
-      return "No date"
-    }
+    if (!value) return ""
     const date = new Date(value)
-    if (Number.isNaN(date.getTime())) {
-      return "No date"
-    }
-    return date.toLocaleDateString(undefined, { month: "short", year: "numeric" })
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", year: "numeric" })
+  }
+
+  const getTimeAgo = (value?: string) => {
+    if (!value) return ""
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    const diffMs = Date.now() - date.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    const diffHr = Math.floor(diffMin / 60)
+    const diffDay = Math.floor(diffHr / 24)
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return `${diffMin}m ago`
+    if (diffHr < 24) return `${diffHr}h ago`
+    if (diffDay < 30) return `${diffDay}d ago`
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
   }
 
   const handleInputChange = (field: keyof typeof formState) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -207,9 +201,7 @@ export default function ProjectsPage() {
   }
 
   const toggleUserSelection = (userId: string) => {
-    if (user?.id && userId === user.id) {
-      return
-    }
+    if (user?.id && userId === user.id) return
     setFormState((prev) => ({
       ...prev,
       users: prev.users.includes(userId) ? prev.users.filter((id) => id !== userId) : [...prev.users, userId],
@@ -218,24 +210,11 @@ export default function ProjectsPage() {
   }
 
   const validateForm = () => {
-    const nextErrors: { title?: string; description?: string; users?: string; type?: string } = {}
-
-    if (formState.title.trim().length < 2) {
-      nextErrors.title = "Title must be at least 2 characters."
-    }
-
-    if (formState.description.trim().length < 10) {
-      nextErrors.description = "Description must be at least 10 characters."
-    }
-
-    if (!formState.type) {
-      nextErrors.type = "Type is required."
-    }
-
-    if (formState.users.length === 0) {
-      nextErrors.users = "Select at least one user."
-    }
-
+    const nextErrors: typeof formErrors = {}
+    if (formState.title.trim().length < 2) nextErrors.title = "Title must be at least 2 characters."
+    if (formState.description.trim().length < 10) nextErrors.description = "Description must be at least 10 characters."
+    if (!formState.type) nextErrors.type = "Type is required."
+    if (formState.users.length === 0) nextErrors.users = "Select at least one user."
     setFormErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -243,26 +222,21 @@ export default function ProjectsPage() {
   const handleCreateProject = async () => {
     try {
       setFormError(null)
-      if (usersError) {
-        setFormError("Users list is unavailable. Please try again.")
-        return
-      }
-      if (!validateForm()) {
-        return
-      }
+      if (usersError) { setFormError("Users list is unavailable."); return }
+      if (!validateForm()) return
 
       const isEditing = !!editingProject
       const users = new Set(formState.users)
-      if (user?.id) {
-        users.add(user.id)
-      }
+      if (user?.id) users.add(user.id)
       const payload = {
         title: formState.title.trim(),
         subtitle: formState.subtitle || undefined,
         description: formState.description.trim(),
         users: Array.from(users),
         type: formState.type,
+        visibility: formState.visibility,
         createdDate: formState.createdDate ? new Date(formState.createdDate).toISOString() : undefined,
+        visibility: formState.visibility,
       }
 
       const response = await fetch(isEditing ? `/api/projects/${editingProject?._id}` : "/api/projects", {
@@ -270,31 +244,19 @@ export default function ProjectsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-
       const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result?.message || result?.error || "Failed to create project")
-      }
+      if (!response.ok) throw new Error(result?.message || result?.error || "Failed to create project")
 
       if (isEditing) {
-        setProjects((prev) => prev.map((project) => (project._id === result.data._id ? result.data : project)))
+        setProjects((prev) => prev.map((p) => (p._id === result.data._id ? result.data : p)))
       } else {
         setProjects((prev) => [result.data, ...prev])
       }
       setIsDialogOpen(false)
       setEditingProject(null)
-      setFormState({
-        title: "",
-        subtitle: "",
-        description: "",
-        users: user?.id ? [user.id] : [],
-        type: "Journal Articles",
-        createdDate: "",
-      })
+      setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create project"
-      setFormError(message)
+      setFormError(error instanceof Error ? error.message : "Failed to create project")
     }
   }
 
@@ -307,6 +269,7 @@ export default function ProjectsPage() {
       users: project.users || [],
       type: project.type,
       createdDate: project.createdDate ? project.createdDate.split("T")[0] : "",
+      visibility: (project as Project & { visibility?: string }).visibility === "public" ? "public" : "private",
     })
     setIsDialogOpen(true)
   }
@@ -315,359 +278,568 @@ export default function ProjectsPage() {
     try {
       const response = await fetch(`/api/projects/${projectId}`, { method: "DELETE" })
       const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result?.message || result?.error || "Failed to delete project")
-      }
-      setProjects((prev) => prev.filter((project) => project._id !== projectId))
+      if (!response.ok) throw new Error(result?.message || result?.error || "Failed to delete project")
+      setProjects((prev) => prev.filter((p) => p._id !== projectId))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete project"
-      setListError(message)
+      setListError(error instanceof Error ? error.message : "Failed to delete project")
     }
   }
 
   return (
-    <div className="bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] min-h-screen font-sans transition-colors duration-200 flex flex-col">
+    <div className="min-h-screen bg-[#faf9f6] dark:bg-[#111] text-[#1a1a1a] dark:text-[#eee] flex flex-col">
       <Header />
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 grid grid-cols-12 gap-6 lg:gap-8 flex-1">
-        {/* Left Sidebar - Filters and Stats */}
-        <div className="col-span-12 lg:col-span-3 space-y-6">
-          <div className="sticky top-24">
-            {/* Filters */}
-            <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm p-6 border border-[#E5E0D4] dark:border-[#404040]">
-              <div className="flex items-center gap-2 text-[#1DA619] font-semibold text-sm uppercase tracking-wider mb-4">
-                <Filter className="h-4 w-4" />
-                Filters
-              </div>
-              <div className="space-y-4">
-                {/* Year Filter */}
-                <div>
-                  <h4 className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF] mb-2">Year</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {["All", "2024", "2023", "Earlier"].map((year) => (
-                      <button
-                        key={year}
-                        onClick={() => setSelectedYear(year)}
-                        className={cn(
-                          "px-2 py-1 text-xs rounded-md cursor-pointer transition-colors",
-                          selectedYear === year
-                            ? "bg-[#1DA619] text-white"
-                            : "bg-gray-100 dark:bg-gray-800 text-[#6B7280] dark:text-[#9CA3AF] hover:bg-gray-200 dark:hover:bg-gray-700"
-                        )}
-                      >
-                        {year}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Type Filter */}
-                <div>
-                  <h4 className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF] mb-2">Type</h4>
-                  <div className="space-y-2">
-                    {["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"].map((type) => (
-                      <label key={type} className="flex items-center gap-2 cursor-pointer group">
-                        <Checkbox
-                          checked={selectedTypes.includes(type)}
-                          onCheckedChange={() => toggleType(type)}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors">
-                          {type}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+      {/* Page header */}
+      <div className="w-full border-b border-[#e8e4dc] dark:border-[#222] bg-white dark:bg-[#161616]">
+        <div className="max-w-4xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-[#1DA619]/10 flex items-center justify-center">
+                <FolderOpen className="h-5 w-5 text-[#1DA619]" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-0.5">Projects</h1>
+                <p className="text-[13px] text-gray-500">
+                  {isLoading ? "Loading..." : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
+                  {!isLoading && filteredProjects.length !== projects.length && ` · ${filteredProjects.length} shown`}
+                </p>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              {/* Filters modal */}
+              <Dialog open={filterDialogOpen} onOpenChange={(open) => {
+                setFilterDialogOpen(open)
+                if (open) { setTempYear(selectedYear); setTempTypes([...selectedTypes]) }
+              }}>
+                <DialogTrigger asChild>
+                  <button
+                    className={cn(
+                      "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium border transition-colors",
+                      (selectedYear !== "All" || selectedTypes.length < 4)
+                        ? "bg-[#1DA619]/5 border-[#1DA619]/20 text-[#1DA619]"
+                        : "bg-white dark:bg-[#161616] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Filters
+                    {(selectedYear !== "All" || selectedTypes.length < 4) && (
+                      <span className="ml-0.5 h-4 min-w-[16px] px-1 rounded-full bg-[#1DA619] text-white text-[9px] font-bold flex items-center justify-center">
+                        {(selectedYear !== "All" ? 1 : 0) + (selectedTypes.length < 4 ? 1 : 0)}
+                      </span>
+                    )}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[420px] !p-0 !gap-0" showCloseButton={true}>
+                  {/* Branded top accent bar */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#1DA619] via-[#1DA619] to-[#F26419] rounded-t-2xl" />
 
-          </div>
-        </div>
+                  <DialogHeader className="px-6 pt-5 pb-0">
+                    <DialogTitle className="flex items-center gap-2.5 text-[16px]">
+                      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419" />
+                        <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                        <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2" />
+                      </svg>
+                      Filter Projects
+                    </DialogTitle>
+                    <DialogDescription className="!mt-0.5 pl-[30px]">
+                      Narrow down your project list by year and type.
+                    </DialogDescription>
+                  </DialogHeader>
 
-        {/* Main Content */}
-        <div className="col-span-12 lg:col-span-9 space-y-6 sm:space-y-8">
-          {/* Publications Section */}
-          <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-[#E5E0D4] dark:border-[#404040] overflow-hidden">
-            <div className="p-5 sm:p-6 border-b border-[#E5E0D4] dark:border-[#404040] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center bg-gray-50/50 dark:bg-white/5">
-              <h2 className="text-lg sm:text-xl font-serif font-bold text-[#1F2937] dark:text-[#E5E7EB]">
-                Projects
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                <Dialog
-                  open={isDialogOpen}
-                  onOpenChange={(open) => {
-                    setIsDialogOpen(open)
-                    if (!open) {
-                      setEditingProject(null)
-                    }
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <Button className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#1DA619] text-white hover:bg-[#158514] transition-all shadow-sm h-auto">
-                      Add Project
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-xl">
-                    <DialogHeader>
-                      <DialogTitle>{editingProject ? "Edit Project" : "Add Project"}</DialogTitle>
-                      <DialogDescription>Provide the project details and save to the list.</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4">
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Title</label>
-                        <Input value={formState.title} onChange={handleInputChange("title")} placeholder="Project title" />
-                        {formErrors.title && <p className="text-xs text-red-500">{formErrors.title}</p>}
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Subtitle</label>
-                        <Input value={formState.subtitle} onChange={handleInputChange("subtitle")} placeholder="Optional subtitle" />
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Description</label>
-                        <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Project description" />
-                        {formErrors.description && <p className="text-xs text-red-500">{formErrors.description}</p>}
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Users</label>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-between text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]"
-                              disabled={usersLoading || !!usersError}
-                            >
-                              {selectedUsersLabel}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent className="w-72">
-                            {usersOptions.length === 0 && (
-                              <div className="px-2 py-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                                No users available
-                              </div>
+                  <div className="px-6 pt-4 pb-2 space-y-5">
+                    {/* Year filter */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2.5 block">Year</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {["All", "2026", "2025", "2024", "2023", "Earlier"].map((year) => (
+                          <button
+                            key={year}
+                            onClick={() => setTempYear(year)}
+                            className={cn(
+                              "h-8 px-3 text-[12px] font-medium rounded-lg transition-all",
+                              tempYear === year
+                                ? "bg-[#1DA619] text-white shadow-sm"
+                                : "bg-gray-50 dark:bg-[#222] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] border border-gray-200 dark:border-[#333]"
                             )}
-                            {usersOptions.map((user) => (
-                              <DropdownMenuCheckboxItem
-                                key={user.id}
-                                checked={formState.users.includes(user.id)}
-                                onCheckedChange={() => toggleUserSelection(user.id)}
-                              >
-                                <div className="flex flex-col">
-                                  <span>{user.name}</span>
-                                  <span className="text-[10px] text-muted-foreground">{user.email}</span>
-                                </div>
-                              </DropdownMenuCheckboxItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {usersError && <p className="text-xs text-red-500">{usersError}</p>}
-                        {formErrors.users && <p className="text-xs text-red-500">{formErrors.users}</p>}
+                          >
+                            {year}
+                          </button>
+                        ))}
                       </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Type</label>
-                        <Select
-                          value={formState.type}
-                          onValueChange={(value: ProjectType) => {
-                            setFormState((prev) => ({ ...prev, type: value }))
-                            setFormErrors((prev) => ({ ...prev, type: undefined }))
-                          }}
-                        >
-                          <SelectTrigger className="w-full">
+                    </div>
+
+                    {/* Type filter */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2.5 block">Type</label>
+                      <div className="space-y-2">
+                        {(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"] as const).map((type) => (
+                          <label
+                            key={type}
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all",
+                              tempTypes.includes(type)
+                                ? "bg-[#1DA619]/5 border-[#1DA619]/20"
+                                : "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-[#333] hover:border-gray-300"
+                            )}
+                          >
+                            <Checkbox
+                              checked={tempTypes.includes(type)}
+                              onCheckedChange={() => setTempTypes((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type])}
+                              className="h-4 w-4"
+                            />
+                            <div className="flex items-center gap-2">
+                              <span className={cn("h-2 w-2 rounded-full", {
+                                "bg-[#1DA619]": type === "Journal Articles",
+                                "bg-[#F26419]": type === "Conference Papers",
+                                "bg-indigo-500": type === "Books & Chapters",
+                                "bg-gray-400": type === "Preprints",
+                              })} />
+                              <span className="text-[13px] text-gray-700 dark:text-gray-300">{type}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-between">
+                    <button
+                      onClick={() => { setTempYear("All"); setTempTypes(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"]) }}
+                      className="text-[12px] font-medium text-[#F26419] hover:text-[#d4550f] transition-colors"
+                    >
+                      Reset all
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setFilterDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-[#222] transition-colors">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => { setSelectedYear(tempYear); setSelectedTypes(tempTypes); setFilterDialogOpen(false) }}
+                        className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors shadow-sm"
+                      >
+                        Apply Filters
+                      </button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* New Project dialog */}
+              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingProject(null); setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" }) } }}>
+                <DialogTrigger asChild>
+                  <button
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1DA619] text-white text-[12px] font-semibold hover:bg-[#158514] transition-all shadow-sm hover:shadow-md active:scale-[0.97]"
+                    onClick={() => { setEditingProject(null); setFormState({ title: "", subtitle: "", description: "", users: user?.id ? [user.id] : [], type: "Journal Articles", createdDate: "", visibility: "private" }) }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New Project
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg !p-0 !gap-0" showCloseButton={true}>
+                  {/* Branded top accent bar */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#1DA619] via-[#1DA619] to-[#F26419] rounded-t-2xl" />
+
+                  <DialogHeader className="px-6 pt-5 pb-0">
+                    <DialogTitle className="flex items-center gap-2.5 text-[16px]">
+                      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419" />
+                        <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                        <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2" />
+                      </svg>
+                      {editingProject ? "Edit Project" : "New Project"}
+                    </DialogTitle>
+                    <DialogDescription className="!mt-0.5 pl-[30px]">
+                      {editingProject ? "Update your project details." : "Fill in the details to get started."}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="px-6 pt-4 pb-2 space-y-4 max-h-[62vh] overflow-y-auto">
+                    {/* Title */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Title *</label>
+                      <Input value={formState.title} onChange={handleInputChange("title")} placeholder="e.g. Quantum Entanglement in Neural Networks" className="h-10 text-[13px]" />
+                      {formErrors.title && <p className="text-[11px] text-red-500 mt-1">{formErrors.title}</p>}
+                    </div>
+
+                    {/* Subtitle */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Subtitle <span className="font-normal text-gray-300">(optional)</span></label>
+                      <Input value={formState.subtitle} onChange={handleInputChange("subtitle")} placeholder="A brief subtitle" className="h-10 text-[13px]" />
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Description *</label>
+                      <Textarea value={formState.description} onChange={handleInputChange("description")} placeholder="Describe the project scope, goals, and methodology..." className="min-h-[90px] text-[13px] resize-none" />
+                      {formErrors.description && <p className="text-[11px] text-red-500 mt-1">{formErrors.description}</p>}
+                    </div>
+
+                    {/* Type & Date */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Type *</label>
+                        <Select value={formState.type} onValueChange={(v: ProjectType) => { setFormState((prev) => ({ ...prev, type: v })); setFormErrors((prev) => ({ ...prev, type: undefined })) }}>
+                          <SelectTrigger className="w-full h-10 text-[13px] data-[size=default]:h-10">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Journal Articles">Journal Articles</SelectItem>
                             <SelectItem value="Conference Papers">Conference Papers</SelectItem>
-                            <SelectItem value="Books & Chapters">Books & Chapters</SelectItem>
+                            <SelectItem value="Books & Chapters">Books &amp; Chapters</SelectItem>
                             <SelectItem value="Preprints">Preprints</SelectItem>
                           </SelectContent>
                         </Select>
-                        {formErrors.type && <p className="text-xs text-red-500">{formErrors.type}</p>}
+                        {formErrors.type && <p className="text-[11px] text-red-500 mt-1">{formErrors.type}</p>}
                       </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">Created Date</label>
-                        <Input type="date" value={formState.createdDate} onChange={handleInputChange("createdDate")} />
-                      </div>
-                    </div>
-                    {formError && (
-                      <p className="text-xs text-red-500">{formError}</p>
-                    )}
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleCreateProject}
-                        disabled={!formState.title || !formState.description || usersLoading || !!usersError}
-                        className="bg-[#1DA619] text-white hover:bg-[#158514]"
-                      >
-                        {editingProject ? "Update Project" : "Save Project"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {isLoading && (
-                <div className="p-6 text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading projects...</div>
-              )}
-              {!isLoading && listError && (
-                <div className="p-6 text-sm text-red-500">{listError}</div>
-              )}
-              {!isLoading && !listError && filteredProjects.length === 0 && (
-                <div className="p-6 text-sm text-[#6B7280] dark:text-[#9CA3AF]">No projects match the selected filters.</div>
-              )}
-              {!isLoading &&
-                !listError &&
-                paginatedProjects.map((project) => (
-                <div key={project._id} className="p-5 sm:p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group relative">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full", getTypeBadgeColor(project.type))}>
-                          {project.type}
-                        </span>
-                        <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{formatProjectDate(project.createdDate || project.createdAt)}</span>
-                      </div>
-                      <Link
-                        href={`/projects/${project._id}`}
-                        className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB] mb-2 group-hover:text-[#1DA619] transition-colors cursor-pointer block"
-                      >
-                        {project.title}
-                      </Link>
-                      {project.subtitle && (
-                        <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB] mb-2">{project.subtitle}</p>
-                      )}
-                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3 line-clamp-2">{project.description}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                        <span className="font-medium text-[#1F2937] dark:text-[#E5E7EB]">
-                          {project.users?.length
-                            ? project.users
-                                .map((userId) => userNameMap.get(userId) || "Unknown")
-                                .join(", ")
-                            : "No users"}
-                        </span>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Date</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className={cn(
+                              "flex items-center gap-2 w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] text-[13px] shadow-sm transition-all hover:border-gray-300",
+                              !formState.createdDate && "text-gray-400"
+                            )}>
+                              <CalendarIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                              {formState.createdDate ? format(new Date(formState.createdDate), "MMM d, yyyy") : "Pick date"}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar mode="single" selected={formState.createdDate ? new Date(formState.createdDate) : undefined} onSelect={(date) => setFormState((prev) => ({ ...prev, createdDate: date ? format(date, "yyyy-MM-dd") : "" }))} initialFocus />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
-                  </div>
-                  <div className="mt-2 flex gap-2 sm:mt-0 sm:absolute sm:top-4 sm:right-4 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
-                      onClick={() => handleEditProject(project)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600"
+
+                    {/* Visibility */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Visibility</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormState((prev) => ({ ...prev, visibility: "private" }))}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border text-left transition-all",
+                            formState.visibility === "private"
+                              ? "border-[#1DA619] bg-[#1DA619]/5 ring-1 ring-[#1DA619]/20"
+                              : "border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] hover:border-gray-300"
+                          )}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete project?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the project.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700 text-white"
-                            onClick={() => handleDeleteProject(project._id)}
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            formState.visibility === "private" ? "bg-[#1DA619]/10" : "bg-gray-100 dark:bg-[#222]"
+                          )}>
+                            <Lock className={cn("h-3.5 w-3.5", formState.visibility === "private" ? "text-[#1DA619]" : "text-gray-400")} />
+                          </div>
+                          <div>
+                            <p className={cn("text-[13px] font-medium", formState.visibility === "private" ? "text-[#1F2937] dark:text-white" : "text-gray-500")}>Private</p>
+                            <p className="text-[10px] text-gray-400 leading-tight">Only collaborators</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormState((prev) => ({ ...prev, visibility: "public" }))}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border text-left transition-all",
+                            formState.visibility === "public"
+                              ? "border-[#1DA619] bg-[#1DA619]/5 ring-1 ring-[#1DA619]/20"
+                              : "border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] hover:border-gray-300"
+                          )}
+                        >
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            formState.visibility === "public" ? "bg-[#1DA619]/10" : "bg-gray-100 dark:bg-[#222]"
+                          )}>
+                            <Globe className={cn("h-3.5 w-3.5", formState.visibility === "public" ? "text-[#1DA619]" : "text-gray-400")} />
+                          </div>
+                          <div>
+                            <p className={cn("text-[13px] font-medium", formState.visibility === "public" ? "text-[#1F2937] dark:text-white" : "text-gray-500")}>Public</p>
+                            <p className="text-[10px] text-gray-400 leading-tight">Anyone can discover</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Collaborators */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Collaborators</label>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex items-center justify-between w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-[#333] bg-white dark:bg-[#1a1a1a] text-[13px] shadow-sm transition-all hover:border-gray-300" disabled={usersLoading || !!usersError}>
+                            <span className={formState.users.length === 0 ? "text-gray-400" : ""}>{selectedUsersLabel}</span>
+                            <Users className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-72">
+                          <div className="p-2 border-b border-gray-100 dark:border-[#333]">
+                            <Input value={collaboratorSearch} onChange={(e) => setCollaboratorSearch(e.target.value)} placeholder="Search collaborators..." className="h-8 text-[12px]" />
+                          </div>
+                          {filteredUsersOptions.length === 0 && <div className="px-3 py-2 text-[12px] text-gray-400">No users found</div>}
+                          {filteredUsersOptions.map((u) => (
+                            <DropdownMenuCheckboxItem key={u.id} checked={formState.users.includes(u.id)} onCheckedChange={() => toggleUserSelection(u.id)}>
+                              <div className="flex flex-col">
+                                <span className="text-[13px]">{u.name}</span>
+                                <span className="text-[10px] text-gray-400">{u.email}</span>
+                              </div>
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {formErrors.users && <p className="text-[11px] text-red-500 mt-1">{formErrors.users}</p>}
+                    </div>
+
+                    {formError && (
+                      <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-600">{formError}</div>
+                    )}
                   </div>
-                </div>
-              ))}
+
+                  <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-between">
+                    <p className="text-[11px] text-gray-300 dark:text-gray-600">* Required fields</p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setIsDialogOpen(false)} className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-[#222] transition-colors">
+                        Cancel
+                      </button>
+                      <button onClick={handleCreateProject} disabled={!formState.title || !formState.description || usersLoading || !!usersError} className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-colors disabled:opacity-40 shadow-sm">
+                        {editingProject ? "Update Project" : "Create Project"}
+                      </button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
-            {/* Pagination */}
-            <div className="bg-gray-50 dark:bg-white/5 p-4 border-t border-[#E5E0D4] dark:border-[#404040] flex justify-center">
-              <nav className="flex flex-wrap items-center justify-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+          </div>
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search projects by title, subtitle, or description..."
+              className="w-full h-10 pl-10 pr-4 rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#1a1a1a] text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-400 focus:outline-none focus:border-[#1DA619]/40 focus:ring-2 focus:ring-[#1DA619]/10 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-gray-200 dark:bg-[#333] flex items-center justify-center text-gray-500 hover:bg-gray-300 dark:hover:bg-[#444] transition-colors"
+              >
+                <span className="text-[10px] font-bold">&times;</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-4xl mx-auto px-8 py-6 w-full flex-1 space-y-5">
+
+        {/* Active filters indicator */}
+        {(selectedYear !== "All" || selectedTypes.length < 4) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-400">Active filters:</span>
+            {selectedYear !== "All" && (
+              <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#1DA619]/8 text-[#1DA619] text-[11px] font-medium border border-[#1DA619]/15">
+                Year: {selectedYear}
+                <button onClick={() => setSelectedYear("All")} className="ml-0.5 hover:text-[#158514]">&times;</button>
+              </span>
+            )}
+            {selectedTypes.length < 4 && selectedTypes.map((type) => (
+              <span key={type} className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-gray-50 dark:bg-[#222] text-gray-600 dark:text-gray-400 text-[11px] font-medium border border-gray-200 dark:border-[#333]">
+                {type}
+                <button onClick={() => setSelectedTypes((prev) => prev.filter((t) => t !== type))} className="ml-0.5 hover:text-gray-800">&times;</button>
+              </span>
+            ))}
+            <button
+              onClick={() => { setSelectedYear("All"); setSelectedTypes(["Journal Articles", "Conference Papers", "Books & Chapters", "Preprints"]) }}
+              className="text-[11px] text-gray-400 hover:text-red-500 transition-colors ml-1"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {listError && (
+          <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-[13px] text-red-600">{listError}</div>
+        )}
+
+        {/* Projects list */}
+        <section className="bg-white dark:bg-[#161616] rounded-xl border border-[#e8e4dc] dark:border-[#222] overflow-hidden">
+          {isLoading ? (
+            <div className="py-16 text-center">
+              <div className="h-6 w-6 border-2 border-[#1DA619] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-[13px] text-gray-400">Loading projects...</p>
+            </div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="mx-auto h-12 w-12 rounded-xl bg-gray-50 dark:bg-[#222] flex items-center justify-center mb-3">
+                {searchQuery ? <Search className="h-5 w-5 text-gray-300" /> : <FolderOpen className="h-5 w-5 text-gray-300" />}
+              </div>
+              <p className="text-[14px] font-medium text-gray-500 mb-1">
+                {projects.length === 0 ? "No projects yet" : searchQuery ? `No results for "${searchQuery}"` : "No projects match filters"}
+              </p>
+              <p className="text-[12px] text-gray-400">
+                {projects.length === 0 ? "Create your first project to get started" : searchQuery ? "Try a different search term" : "Try adjusting the filters"}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-[#f0ece4] dark:divide-[#222]">
+              {paginatedProjects.map((project) => {
+                const isOwner = project.users?.[0] === user?.id
+                const isPublic = project.visibility === "public"
+                const collaboratorNames = project.users
+                  ?.map((uid) => userNameMap.get(uid))
+                  .filter(Boolean) as string[] || []
+                const dateStr = project.createdDate || project.createdAt
+                return (
+                  <div key={project._id} className="group hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors relative">
+                    <Link href={`/projects/${project._id}`} className="flex items-start gap-4 px-5 py-4">
+                      <div className={cn(
+                        "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
+                        isOwner ? "bg-[#1DA619]/8" : "bg-[#F26419]/8"
+                      )}>
+                        <FolderOpen className={cn("h-5 w-5", isOwner ? "text-[#1DA619]" : "text-[#F26419]")} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="text-[14px] font-semibold group-hover:text-[#1DA619] transition-colors truncate">
+                            {project.title}
+                          </h3>
+                          <span className={cn("text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border", typeColors[project.type])}>
+                            {project.type}
+                          </span>
+                          {isPublic ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#1DA619]/8 text-[#1DA619] border border-[#1DA619]/15">
+                              <Globe className="h-2.5 w-2.5" />
+                              Public
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-500/10 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-500/20">
+                              <Lock className="h-2.5 w-2.5" />
+                              Private
+                            </span>
+                          )}
+                        </div>
+                        {project.subtitle && (
+                          <p className="text-[13px] text-gray-600 dark:text-gray-400 mb-1">{project.subtitle}</p>
+                        )}
+                        <p className="text-[12px] text-gray-400 line-clamp-1 mb-2">{project.description}</p>
+                        <div className="flex items-center gap-3 text-[11px] text-gray-400">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {collaboratorNames.length > 0 ? collaboratorNames.slice(0, 2).join(", ") : "No members"}
+                            {collaboratorNames.length > 2 && ` +${collaboratorNames.length - 2}`}
+                          </span>
+                          {dateStr && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {getTimeAgo(dateStr)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-[#1DA619] transition-all flex-shrink-0 mt-1" />
+                    </Link>
+
+                    {/* Edit/Delete hover actions */}
+                    <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all z-10">
+                      <button
+                        onClick={(e) => { e.preventDefault(); handleEditProject(project) }}
+                        className="h-7 px-2.5 rounded-md flex items-center gap-1.5 bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-[#1DA619] hover:border-[#1DA619]/30 hover:bg-[#1DA619]/5 transition-all shadow-sm text-[10px] font-medium"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Edit
+                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="h-7 px-2.5 rounded-md flex items-center gap-1.5 bg-white dark:bg-[#222] border border-gray-200 dark:border-[#333] text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shadow-sm text-[10px] font-medium">
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="p-0 gap-0 sm:max-w-[400px] overflow-hidden">
+                          <div className="px-6 pt-6 pb-4">
+                            <AlertDialogHeader className="gap-3">
+                              <div className="h-10 w-10 rounded-xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                                <Trash2 className="h-5 w-5 text-red-500" />
+                              </div>
+                              <AlertDialogTitle className="text-[16px]">Delete this project?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. The project and all its data will be permanently removed.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+
+                            {/* Project name preview */}
+                            <div className="mt-4 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-100 dark:border-[#2a2a2a]">
+                              <p className="text-[12px] text-gray-400 mb-0.5">Project</p>
+                              <p className="text-[13px] font-medium text-[#1F2937] dark:text-white truncate">{project.title}</p>
+                            </div>
+                          </div>
+
+                          <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-end gap-2">
+                            <AlertDialogCancel className="h-9 px-4 rounded-lg border border-gray-200 dark:border-[#333] text-[12px] font-medium text-gray-500 bg-white dark:bg-transparent hover:!bg-gray-50 hover:!text-gray-600 dark:hover:!bg-[#222] dark:hover:!text-gray-300">
+                              Cancel
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              className="h-9 px-5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[12px] font-medium shadow-sm"
+                              onClick={() => handleDeleteProject(project._id)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1.5" />
+                              Delete Project
+                            </AlertDialogAction>
+                          </div>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="px-5 py-3.5 border-t border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
+              <span className="text-[11px] text-gray-400">
+                Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredProjects.length)} of {filteredProjects.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
+                  className="h-8 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-[#222] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {Array.from({ length: totalPages }, (_, index) => {
-                  const page = index + 1
-                  const isActive = page === currentPage
-                  return (
-                    <Button
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Prev
+                </button>
+                <div className="flex items-center gap-0.5 mx-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
                       key={page}
-                      variant={isActive ? "default" : "ghost"}
-                      className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium transition-colors h-auto",
-                        isActive
-                          ? "bg-[#1DA619] text-white shadow-sm"
-                          : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-white dark:hover:bg-gray-700"
-                      )}
                       onClick={() => setCurrentPage(page)}
+                      className={cn(
+                        "h-8 w-8 rounded-lg text-[12px] font-medium flex items-center justify-center transition-all",
+                        page === currentPage
+                          ? "bg-[#1DA619] text-white shadow-sm"
+                          : "text-gray-400 hover:bg-gray-50 dark:hover:bg-[#222] hover:text-gray-600"
+                      )}
                     >
                       {page}
-                    </Button>
-                  )
-                })}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-[#6B7280] dark:text-[#9CA3AF] transition-colors h-auto w-auto"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
+                  className="h-8 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-[#222] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </nav>
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Grants and Patents Grid */}
-         
-        </div>
+          )}
+        </section>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white dark:bg-[#262626] border-t border-[#E5E0D4] dark:border-[#404040] py-12 mt-12">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2">
-            <svg className="w-6 h-6 grayscale opacity-50" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7 14H17L18.5 18H5.5L7 14Z" fill="#F26419"></path>
-              <path d="M10 3V8L5 18H19L14 8V3H10Z" stroke="#1DA619" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
-              <path d="M9 3H15" stroke="#1DA619" strokeLinecap="round" strokeWidth="2"></path>
-            </svg>
-            <span className="text-lg font-bold tracking-tight text-[#6B7280] dark:text-[#9CA3AF]">Sevivra</span>
-          </div>
-          <div className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-            © 2024 Sevivra Scientific Collaboration Platform. All rights reserved.
-          </div>
-          <div className="flex gap-6">
-            <Link href="#" className="text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] transition-colors">
-              Privacy
-            </Link>
-            <Link href="#" className="text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] transition-colors">
-              Terms
-            </Link>
-            <Link href="#" className="text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#1DA619] transition-colors">
-              Contact
-            </Link>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }
-

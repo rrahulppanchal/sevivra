@@ -1,0 +1,245 @@
+/* ─── Professional Academic Document Editor ─── */
+
+.academic-editor .ProseMirror {
+  outline: none;
+  min-height: 800px;
+  font-family: "Times New Roman", "Garamond", "Georgia", "Computer Modern", serif;
+  font-size: 12pt;
+  line-height: 2;
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Headings ─── */
+.academic-editor .ProseMirror h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+  line-height: 1.3;
+  text-align: center;
+  color: #111;
+  letter-spacing: 0.02em;
+}
+
+.academic-editor .ProseMirror h1:first-child {
+  margin-top: 0;
+}
+
+.academic-editor .ProseMirror h2 {
+  font-size: 16pt;
+  font-weight: 700;
+  margin-top: 1.4em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+  color: #1a1a1a;
+  border-bottom: 0.5px solid #d4d4d4;
+  padding-bottom: 0.25em;
+}
+
+.academic-editor .ProseMirror h3 {
+  font-size: 14pt;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+  line-height: 1.4;
+  color: #1a1a1a;
+  font-style: italic;
+}
+
+.academic-editor .ProseMirror h4 {
+  font-size: 12pt;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.3em;
+  line-height: 1.4;
+  color: #333;
+}
+
+/* ─── Paragraphs ─── */
+.academic-editor .ProseMirror p {
+  margin-bottom: 0.3em;
+  line-height: 2;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-indent: 2em;
+}
+
+.academic-editor .ProseMirror p:first-child,
+.academic-editor .ProseMirror h1 + p,
+.academic-editor .ProseMirror h2 + p,
+.academic-editor .ProseMirror h3 + p,
+.academic-editor .ProseMirror h4 + p {
+  text-indent: 0;
+}
+
+/* ─── Lists ─── */
+.academic-editor .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 2em;
+  margin-bottom: 0.8em;
+}
+
+.academic-editor .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 2em;
+  margin-bottom: 0.8em;
+}
+
+.academic-editor .ProseMirror li {
+  margin-bottom: 0.3em;
+  line-height: 1.8;
+  text-indent: 0;
+}
+
+.academic-editor .ProseMirror li p {
+  text-indent: 0;
+  margin-bottom: 0.15em;
+}
+
+/* ─── Blockquote ─── */
+.academic-editor .ProseMirror blockquote {
+  border-left: 3px solid #d4d4d4;
+  margin: 1em 0 1em 1.5em;
+  padding: 0.5em 0 0.5em 1.5em;
+  font-style: italic;
+  color: #555;
+}
+
+.academic-editor .ProseMirror blockquote p {
+  text-indent: 0;
+}
+
+/* ─── Horizontal Rule ─── */
+.academic-editor .ProseMirror hr {
+  border: none;
+  border-top: 0.5px solid #ccc;
+  margin: 2em auto;
+  width: 40%;
+}
+
+/* ─── Code ─── */
+.academic-editor .ProseMirror code {
+  font-family: "Courier New", "SF Mono", monospace;
+  background: #f5f2e8;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: #c7254e;
+}
+
+.academic-editor .ProseMirror pre {
+  background: #f8f6f0;
+  border: 1px solid #e5e0d4;
+  border-radius: 4px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-family: "Courier New", "SF Mono", monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+/* ─── Links ─── */
+.academic-editor .ProseMirror a {
+  color: #1a5fb4;
+  text-decoration: none;
+  border-bottom: 0.5px solid #1a5fb430;
+  transition: border-color 0.2s;
+}
+
+.academic-editor .ProseMirror a:hover {
+  border-bottom-color: #1a5fb4;
+}
+
+/* ─── Strong / Emphasis ─── */
+.academic-editor .ProseMirror strong {
+  font-weight: 700;
+}
+
+.academic-editor .ProseMirror em {
+  font-style: italic;
+}
+
+/* ─── Highlight ─── */
+.academic-editor .ProseMirror mark {
+  background-color: #fef3c7;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* ─── Math / LaTeX (via @aarkue/tiptap-math-extension) ─── */
+
+/* Inline math rendered */
+.academic-editor .ProseMirror span[data-type="inlineMath"] .tiptap-math.latex {
+  display: inline;
+  padding: 0 0.15em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.academic-editor .ProseMirror span[data-type="inlineMath"] .tiptap-math.latex:hover {
+  background-color: rgba(29, 166, 25, 0.06);
+}
+
+/* Block math - display mode */
+.academic-editor .ProseMirror span[data-type="inlineMath"] .katex-display {
+  display: block;
+  text-align: center;
+  margin: 1.2em 0;
+  padding: 0.8em 0;
+}
+
+/* Math editing input */
+.academic-editor .ProseMirror span[data-type="inlineMath"] input,
+.academic-editor .ProseMirror span[data-type="inlineMath"] textarea {
+  display: inline-block;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.85em;
+  background: #f5f2e8;
+  border: 1px solid #e5e0d4;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #6b5b3e;
+  outline: none;
+  min-width: 3em;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.academic-editor .ProseMirror span[data-type="inlineMath"] input:focus,
+.academic-editor .ProseMirror span[data-type="inlineMath"] textarea:focus {
+  border-color: #1DA619;
+  box-shadow: 0 0 0 2px rgba(29, 166, 25, 0.12);
+}
+
+/* KaTeX font size in editor context */
+.academic-editor .ProseMirror .katex {
+  font-size: 1.05em;
+}
+
+.academic-editor .ProseMirror .katex-display > .katex {
+  font-size: 1.15em;
+}
+
+/* ─── Selection ─── */
+.academic-editor .ProseMirror ::selection {
+  background: rgba(29, 166, 25, 0.15);
+}
+
+/* ─── Placeholder ─── */
+.academic-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: "Start writing your manuscript...";
+  float: left;
+  color: #b5b0a3;
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* ─── Print-like page feel ─── */
+.academic-editor .ProseMirror {
+  max-width: none;
+  word-spacing: 0.05em;
+}

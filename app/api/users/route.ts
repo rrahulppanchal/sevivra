@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/db'
 import User from '@/models/User'
 
-// GET - Retrieve approved users for selection
+// GET - Retrieve verified users for selection
 export async function GET(_: NextRequest) {
   try {
     try {
@@ -19,7 +19,7 @@ export async function GET(_: NextRequest) {
       )
     }
 
-    const users = await User.find({ isApproved: true })
+    const users = await User.find({ isEmailVerified: true })
       .select('name email role')
       .sort({ name: 1 })
       .lean()

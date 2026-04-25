@@ -5,6 +5,10 @@ import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
 import { TextStyle } from "@tiptap/extension-text-style"
+import Highlight from "@tiptap/extension-highlight"
+import MathExtension from "@aarkue/tiptap-math-extension"
+import "katex/dist/katex.min.css"
+import "./editor.css"
 import { useImperativeHandle, forwardRef, useEffect, useRef } from "react"
 
 interface RichTextEditorProps {
@@ -16,7 +20,9 @@ interface RichTextEditorProps {
 export interface RichTextEditorRef {
   toggleBold: () => void
   toggleItalic: () => void
-  setLink: () => void
+  setLink: (url: string) => void
+  removeLink: () => void
+  getLink: () => string | null
   setHeading: (level: 1 | 2 | 3 | 4 | null) => void
   getCurrentHeading: () => 1 | 2 | 3 | 4 | null
   increaseFontSize: () => void
@@ -25,6 +31,10 @@ export interface RichTextEditorRef {
   toggleLowercase: () => void
   isBold: () => boolean
   isItalic: () => boolean
+  highlightSelection: () => void
+  clearAllHighlights: () => void
+  insertInlineMath: (latex?: string) => void
+  insertBlockMath: (latex?: string) => void
 }
 
 // Custom extension for font size using inline styles
@@ -110,6 +120,13 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         }),
         FontSize,
         TextTransform,
+        Highlight.configure({ multicolor: true }),
+        MathExtension.configure({
+          evaluation: false,
+          addInlineMath: true,
+          katexOptions: { throwOnError: false },
+          delimiters: "dollar",
+        }),
       ],
       content,
       editable: !readOnly,
@@ -123,6 +140,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         onChange(html)
       },
     })
+
+    useEffect(() => {
+      if (!editor) return
+      editor.setEditable(!readOnly)
+    }, [readOnly, editor])
 
     useEffect(() => {
       if (!editor) return
@@ -141,11 +163,16 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       toggleItalic: () => {
         editor?.chain().focus().toggleItalic().run()
       },
-      setLink: () => {
-        const url = window.prompt("Enter URL:")
-        if (url) {
-          editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
-        }
+      setLink: (url: string) => {
+        if (!editor || !url) return
+        editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+      },
+      removeLink: () => {
+        editor?.chain().focus().extendMarkRange("link").unsetLink().run()
+      },
+      getLink: () => {
+        if (!editor) return null
+        return editor.getAttributes("link")?.href || null
       },
       setHeading: (level: 1 | 2 | 3 | 4 | null) => {
         if (!editor) return
@@ -203,6 +230,34 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       isItalic: () => {
         return editor?.isActive("italic") ?? false
       },
+      highlightSelection: () => {
+        if (!editor) return
+        editor
+          .chain()
+          .focus()
+          .setHighlight({ color: "#FEF3C7" })
+          .run()
+      },
+      clearAllHighlights: () => {
+        if (!editor) return
+        const { from, to } = editor.state.selection
+        editor
+          .chain()
+          .selectAll()
+          .unsetHighlight()
+          .setTextSelection({ from, to })
+          .run()
+      },
+      insertInlineMath: (latex?: string) => {
+        if (!editor) return
+        const text = latex || "x^2"
+        editor.chain().focus().insertContent(`$${text}$`).run()
+      },
+      insertBlockMath: (latex?: string) => {
+        if (!editor) return
+        const text = latex || "\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"
+        editor.chain().focus().insertContent(`$$${text}$$`).run()
+      },
     }))
 
     if (!editor) {
@@ -210,13 +265,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     }
 
     return (
-      <div className="w-full">
+      <div className="w-full academic-editor">
         <EditorContent
           editor={editor}
-          className="prose prose-lg max-w-none font-serif [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[800px] [&_.ProseMirror_h1]:text-4xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h1]:mt-6 [&_.ProseMirror_h1]:mb-4 [&_.ProseMirror_h2]:text-3xl [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h2]:mt-5 [&_.ProseMirror_h2]:mb-3 [&_.ProseMirror_h3]:text-2xl [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_h3]:mt-4 [&_.ProseMirror_h3]:mb-2 [&_.ProseMirror_h4]:text-xl [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h4]:mt-3 [&_.ProseMirror_h4]:mb-2 [&_.ProseMirror_p]:mb-4 [&_.ProseMirror_p]:leading-relaxed"
-          style={{
-            color: "#1F2937",
-          }}
+          className="max-w-none"
         />
       </div>
     )

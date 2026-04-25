@@ -27,7 +27,7 @@ export async function getCurrentUser() {
       email: user.email,
       role: user.role,
       institution: user.institution,
-      isApproved: user.isApproved,
+      isEmailVerified: user.isEmailVerified,
     }
   } catch (error) {
     return null

@@ -4,6 +4,7 @@ import mongoose from 'mongoose'
 import connectDB from '@/lib/db'
 import Project from '@/models/Project'
 import { projectUpdateSchema } from '@/lib/validations/project'
+import { getCurrentUser } from '@/lib/auth'
 
 const handleDbConnectionError = (dbError: any) => {
   console.error('Database connection error:', dbError)
@@ -79,6 +80,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return handleDbConnectionError(dbError)
     }
 
+    const currentUser = await getCurrentUser()
+    if (!currentUser?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
 
     let validatedData
@@ -89,6 +95,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         return handleZodError(error)
       }
       throw error
+    }
+
+    if (validatedData.users && !validatedData.users.includes(currentUser.id)) {
+      return NextResponse.json(
+        { error: 'Project owner cannot be removed.' },
+        { status: 400 }
+      )
     }
 
     const updateData: Record<string, any> = {

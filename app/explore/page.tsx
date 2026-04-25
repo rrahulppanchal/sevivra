@@ -2,432 +2,421 @@
 
 import {
   Search,
-  Bell,
-  Sparkles,
-  Settings,
   Users,
   ChevronDown,
-  ArrowRight,
-  ChevronRight,
-  UserPlus,
+  BookOpen,
   FileText,
+  Loader2,
+  Globe,
+  Clock,
+  CalendarDays,
+  ArrowRight,
+  Compass,
+  Sparkles,
+  TrendingUp,
 } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Header } from "@/components/layout/header"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+
+interface ProjectResult {
+  _id: string
+  title: string
+  subtitle: string
+  description: string
+  type: string
+  users: { id: string; name: string }[]
+  createdDate: string
+  updatedAt: string
+}
+
+const searchTypes = [
+  { value: "", label: "All Types" },
+  { value: "Journal Articles", label: "Journals" },
+  { value: "Conference Papers", label: "Conferences" },
+  { value: "Books & Chapters", label: "Books" },
+  { value: "Preprints", label: "Preprints" },
+]
+
+const trendingTopics = [
+  "Machine Learning",
+  "Quantum Computing",
+  "Climate Science",
+  "Drug Discovery",
+  "Neural Networks",
+  "Genomics",
+]
+
+const typeConfig: Record<string, { color: string; bg: string; border: string; icon: string }> = {
+  "Journal Articles": { color: "text-[#1DA619]", bg: "bg-[#1DA619]/8", border: "border-[#1DA619]/15", icon: "JA" },
+  "Conference Papers": { color: "text-[#F26419]", bg: "bg-[#F26419]/8", border: "border-[#F26419]/15", icon: "CP" },
+  Preprints: { color: "text-gray-500", bg: "bg-gray-100 dark:bg-gray-500/10", border: "border-gray-200 dark:border-gray-500/20", icon: "PP" },
+  "Books & Chapters": { color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-500/10", border: "border-indigo-200 dark:border-indigo-500/20", icon: "BC" },
+}
 
 export default function ExplorePage() {
-  const [searchType, setSearchType] = useState("keyword")
-  const [searchQuery, setSearchQuery] = useState("Artificial General Intelligence")
+  const [selectedType, setSelectedType] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [results, setResults] = useState<ProjectResult[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<ProjectResult | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const currentType = searchTypes.find((t) => t.value === selectedType) || searchTypes[0]
+
+  const fetchResults = useCallback(async (q: string, type: string) => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (q.trim()) params.set("q", q.trim())
+      if (type) params.set("type", type)
+      params.set("limit", "20")
+      const res = await fetch(`/api/projects/search?${params}`)
+      const json = await res.json()
+      if (json.success) {
+        setResults(json.data || [])
+        setTotal(json.pagination?.total || 0)
+      }
+    } catch (err) {
+      console.error("Search failed:", err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") fetchResults(searchQuery, selectedType)
+  }
+
+  const handleTypeSelect = (value: string) => {
+    setSelectedType(value)
+    setDropdownOpen(false)
+    fetchResults(searchQuery, value)
+  }
+
+  const handleTopicClick = (topic: string) => {
+    setSearchQuery(topic)
+    fetchResults(topic, selectedType)
+  }
+
+  const formatDate = (value?: string) => {
+    if (!value) return ""
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+  }
+
+  const getTimeAgo = (value?: string) => {
+    if (!value) return ""
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    const diffMs = Date.now() - date.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    const diffHr = Math.floor(diffMin / 60)
+    const diffDay = Math.floor(diffHr / 24)
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return `${diffMin}m ago`
+    if (diffHr < 24) return `${diffHr}h ago`
+    if (diffDay < 30) return `${diffDay}d ago`
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  }
+
+  useEffect(() => { fetchResults("", "") }, [fetchResults])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-[#F5F1E6] dark:bg-[#1A1A1A] text-[#1F2937] dark:text-[#E5E7EB] transition-colors duration-200">
+    <div className="min-h-screen bg-[#faf9f6] dark:bg-[#111] text-[#1a1a1a] dark:text-[#eee] flex flex-col">
       <Header />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative scroll-smooth">
-        <div className="max-w-7xl mx-auto px-8 py-10">
-          <header className="mb-10 flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl lg:text-4xl font-serif font-bold">
-                <span className="bg-gradient-to-r from-[#1DA619] to-[#F26419] bg-clip-text text-transparent">
-                  Explore Projects
-                </span>
-              </h1>
-            </div>
-          </header>
+      {/* Hero */}
+      <div className="w-full bg-white dark:bg-[#161616] border-b border-[#e8e4dc] dark:border-[#222]">
+        <div className="max-w-5xl mx-auto px-8 py-10 text-center">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1DA619]/8 text-[#1DA619] text-[11px] font-semibold mb-4 border border-[#1DA619]/15">
+            <Compass className="h-3 w-3" />
+            Explore Public Research
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Discover projects across the platform</h1>
+          <p className="text-[14px] text-gray-500 max-w-md mx-auto mb-8">
+            Browse public research, find inspiration, and connect with collaborators.
+          </p>
 
-          {/* Search Bar */}
-          <div className="mb-10">
-            <Card className="p-2 rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040]">
-              <div className="flex items-center gap-2">
-                <Select value={searchType} onValueChange={setSearchType}>
-                  <SelectTrigger className="w-[140px] bg-[#F5F1E6] dark:bg-[#1A1A1A] border-none rounded-lg h-12 text-sm font-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="keyword">Keyword</SelectItem>
-                    <SelectItem value="author">Author</SelectItem>
-                    <SelectItem value="organization">Organization</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="flex-1 relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B7280] dark:text-[#9CA3AF] w-5 h-5 pointer-events-none" />
-                  <Input
-                    className="w-full bg-transparent border-none shadow-none pl-12 pr-4 h-12 text-lg font-medium text-[#1F2937] dark:text-[#E5E7EB] placeholder:text-[#6B7280] dark:placeholder:text-[#9CA3AF] focus-visible:ring-0"
-                    placeholder="Search for projects, research, members..."
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+          {/* Search */}
+          <div className="max-w-2xl mx-auto flex items-center gap-2">
+            <div className="relative flex-shrink-0" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-1.5 px-3.5 h-11 rounded-xl bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] hover:border-gray-300 transition-colors min-w-[110px]"
+              >
+                <span className="text-[12px] font-medium text-gray-600 dark:text-gray-300">{currentType.label}</span>
+                <ChevronDown className={cn("h-3 w-3 text-gray-400 ml-auto transition-transform", dropdownOpen && "rotate-180")} />
+              </button>
+              {dropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-[#333] shadow-lg z-50 py-1">
+                  {searchTypes.map((type) => (
+                    <button
+                      key={type.value}
+                      onClick={() => handleTypeSelect(type.value)}
+                      className={cn(
+                        "w-full px-3.5 py-2 text-[12px] text-left transition-colors",
+                        selectedType === type.value ? "bg-[#1DA619]/8 text-[#1DA619] font-semibold" : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#222]"
+                      )}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
                 </div>
-                <Button
-                  className="bg-[#1DA619] hover:bg-[#1DA619]/90 text-white px-8 h-12 rounded-xl font-semibold shadow-lg shadow-[#1DA619]/20"
-                >
-                  Search
-                </Button>
-              </div>
-            </Card>
+              )}
+            </div>
+
+            <div className="flex-1 relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search by title or description..."
+                className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#1a1a1a] text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-[#1DA619]/40 focus:ring-2 focus:ring-[#1DA619]/10 transition-all"
+              />
+            </div>
+
+            <button
+              onClick={() => fetchResults(searchQuery, selectedType)}
+              disabled={loading}
+              className="h-11 px-5 rounded-xl bg-[#1DA619] text-white text-[12px] font-semibold hover:bg-[#158514] transition-all shadow-sm active:scale-[0.97] disabled:opacity-50 flex-shrink-0"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
+            </button>
           </div>
 
-          {/* Search Results */}
-          <div className="mb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">
-                Search Results
-              </h2>
-              <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF] font-medium">
-                128 projects found
-              </span>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Project Card 1 */}
-              <Card className="p-6 rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040] hover:border-[#1DA619]/30 transition-all group shadow-sm">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors mb-1">
-                      Scaling Laws for Large Language Models towards AGI
-                    </h3>
-                    <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-4 flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Dr. Amara Okafor, Prof. Wei Zhang, and 3 others
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Artificial Intelligence
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Transformer Architecture
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Neural Scaling
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[#E5E0D4] dark:border-[#404040] hover:bg-[#F5F1E6] hover:text-[#1DA619] dark:hover:bg-[#1A1A1A] dark:hover:text-[#1DA619] cursor-pointer"
-                  >
-                    <span>View</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </Button>
-                </div>
-              </Card>
-
-              {/* Project Card 2 */}
-              <Card className="p-6 rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040] hover:border-[#1DA619]/30 transition-all group shadow-sm">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors mb-1">
-                      Cognitive Architectures for General Intelligence
-                    </h3>
-                    <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-4 flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Dr. Julian Smith, Dr. Elena Rossi
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Cognitive Science
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Symbolic AI
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        AGI
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[#E5E0D4] dark:border-[#404040] hover:bg-[#F5F1E6] dark:hover:bg-[#1A1A1A]"
-                  >
-                    <span>View</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </Button>
-                </div>
-              </Card>
-
-              {/* Project Card 3 */}
-              <Card className="p-6 rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040] hover:border-[#1DA619]/30 transition-all group shadow-sm">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-[#1F2937] dark:text-[#E5E7EB] group-hover:text-[#1DA619] transition-colors mb-1">
-                      Cross-Domain Generalization in Autonomous Agents
-                    </h3>
-                    <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-4 flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Prof. Alan Grant, Dr. Sarah Lee
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Robotics
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="px-3 py-1 bg-[#F5F1E6] dark:bg-[#1A1A1A] border-[#E5E0D4] dark:border-[#404040] text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wider rounded-lg"
-                      >
-                        Reinforcement Learning
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[#E5E0D4] dark:border-[#404040] hover:bg-[#F5F1E6] dark:hover:bg-[#1A1A1A]"
-                  >
-                    <span>View</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </Button>
-                </div>
-              </Card>
-            </div>
-          </div>
-
-          {/* Suggested by Gemini */}
-          <div className="mt-16">
-            <div className="flex items-center gap-2 mb-6">
-              {/* <Sparkles className="text-[#F26419] w-6 h-6" /> */}
-              <h2 className="text-xl font-bold text-[#1F2937] dark:text-[#E5E7EB]">
-                Suggested by Gemini
-              </h2>
-              <Separator className="flex-1 ml-4 bg-[#E5E0D4] dark:bg-[#404040]" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Suggestion Card 1 */}
-              <div className="bg-gradient-to-br from-white to-[#F5F1E6] dark:from-[#262626] dark:to-[#262626] p-5 rounded-2xl border border-[#F26419]/20 shadow-lg shadow-[#F26419]/5 hover:translate-y-[-4px] transition-all cursor-pointer">
-                <div className="flex items-center gap-2 mb-3">
-                  {/* <Sparkles className="text-[#F26419] w-4 h-4" /> */}
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#F26419]">
-                    AI Optimization
-                  </span>
-                </div>
-                <h4 className="font-bold text-[#1F2937] dark:text-[#E5E7EB] mb-2">
-                  Molecular Dynamics Simulation
-                </h4>
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-4">
-                  Highly relevant to your previous work on Biological Systems and Computation.
-                </p>
-                <div className="flex items-center justify-between mt-auto">
-                  <span className="text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]">
-                    Dr. Elena Rossi
-                  </span>
-                  <ChevronRight className="w-5 h-5 text-[#6B7280] dark:text-[#9CA3AF] group-hover:text-[#F26419]" />
-                </div>
-              </div>
-
-              {/* Suggestion Card 2 */}
-              <div className="bg-gradient-to-br from-white to-[#F5F1E6] dark:from-[#262626] dark:to-[#262626] p-5 rounded-2xl border border-[#F26419]/20 shadow-lg shadow-[#F26419]/5 hover:translate-y-[-4px] transition-all cursor-pointer">
-                <div className="flex items-center gap-2 mb-3">
-                  {/* <Sparkles className="text-[#F26419] w-4 h-4" /> */}
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#F26419]">
-                    Network Expansion
-                  </span>
-                </div>
-                <h4 className="font-bold text-[#1F2937] dark:text-[#E5E7EB] mb-2">
-                  Swarm Intelligence in Robotics
-                </h4>
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-4">
-                  Connect with Prof. Alan Grant to explore algorithmic frameworks for AGI.
-                </p>
-                <div className="flex items-center justify-between mt-auto">
-                  <span className="text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]">
-                    Prof. Alan Grant
-                  </span>
-                  <ChevronRight className="w-5 h-5 text-[#6B7280] dark:text-[#9CA3AF]" />
-                </div>
-              </div>
-
-              {/* Suggestion Card 3 */}
-              <div className="bg-gradient-to-br from-white to-[#F5F1E6] dark:from-[#262626] dark:to-[#262626] p-5 rounded-2xl border border-[#F26419]/20 shadow-lg shadow-[#F26419]/5 hover:translate-y-[-4px] transition-all cursor-pointer">
-                <div className="flex items-center gap-2 mb-3">
-                  {/* <Sparkles className="text-[#F26419] w-4 h-4" /> */}
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#F26419]">
-                    Interdisciplinary
-                  </span>
-                </div>
-                <h4 className="font-bold text-[#1F2937] dark:text-[#E5E7EB] mb-2">
-                  Ethical Frameworks for AGI
-                </h4>
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-4">
-                  Top trending collaboration opportunity in the Ethics and AI space.
-                </p>
-                <div className="flex items-center justify-between mt-auto">
-                  <span className="text-xs font-medium text-[#1F2937] dark:text-[#E5E7EB]">
-                    Dr. Sarah Connors
-                  </span>
-                  <ChevronRight className="w-5 h-5 text-[#6B7280] dark:text-[#9CA3AF]" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Notifications and Network */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-16">
-            {/* Notifications */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">
-                  Notifications
-                </h2>
-                <Button
-                  variant="link"
-                  className="text-sm font-medium text-[#F26419] hover:text-orange-600 p-0 h-auto"
-                  asChild
-                >
-                  <a href="#">View All</a>
-                </Button>
-              </div>
-              <Card className="rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040] p-2 flex-1">
-                <CardContent className="p-0">
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start border-b border-gray-50 dark:border-gray-800 last:border-0">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-indigo-500 text-white text-xs font-bold">
-                        RG
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        <span className="font-semibold">Rahul</span> left a comment on{" "}
-                        <span className="font-medium text-[#1DA619]">Quantum Entanglement</span>
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        15 mins ago
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start border-b border-gray-50 dark:border-gray-800 last:border-0">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400">
-                        <UserPlus className="w-5 h-5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        Collaboration invite from <span className="font-semibold">Dr. John Doe</span>
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        2 hours ago
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-orange-100 dark:bg-orange-900 text-[#F26419]">
-                        <FileText className="w-5 h-5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        Your manuscript &apos;Neuro-symbolic AI&apos; was successfully exported
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        5 hours ago
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* New in Your Network */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#1F2937] dark:text-[#E5E7EB]">
-                  New in Your Network
-                </h2>
-                <Button
-                  variant="link"
-                  className="text-sm font-medium text-[#F26419] hover:text-orange-600 p-0 h-auto"
-                  asChild
-                >
-                  <a href="#">View All</a>
-                </Button>
-              </div>
-              <Card className="rounded-2xl bg-white dark:bg-[#262626] border-[#E5E0D4] dark:border-[#404040] p-2 flex-1">
-                <CardContent className="p-0">
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start border-b border-gray-50 dark:border-gray-800 last:border-0">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-teal-500 text-white text-xs font-bold">
-                        AE
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        <span className="font-semibold">Adam Eves</span> started a new project
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        1 hour ago
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start border-b border-gray-50 dark:border-gray-800 last:border-0">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-pink-500 text-white text-xs font-bold">
-                        SL
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        <span className="font-semibold">Dr. Sarah Lee</span> published a new paper in{" "}
-                        <span className="italic">Nature Neuroscience</span>
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                        4 hours ago
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer flex gap-3 items-start">
-                    <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="bg-emerald-500 text-white text-xs font-bold">
-                        AC
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm text-[#1F2937] dark:text-[#E5E7EB]">
-                        <span className="font-semibold">Ava Chen</span> posted a new collaboration
-                        opportunity
-                      </p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">Yesterday</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+          {/* Quick topics */}
+          <div className="flex items-center justify-center gap-1.5 mt-4 flex-wrap">
+            <span className="text-[11px] text-gray-400 mr-1">Try:</span>
+            {trendingTopics.map((topic) => (
+              <button
+                key={topic}
+                onClick={() => handleTopicClick(topic)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-medium text-gray-500 hover:text-[#1DA619] hover:bg-[#1DA619]/5 transition-all"
+              >
+                {topic}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
+
+      {/* Results */}
+      <main className="max-w-5xl mx-auto px-8 py-8 w-full flex-1">
+        {/* Results header */}
+        {!loading && results.length > 0 && (
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-[13px] text-gray-500">
+              {searchQuery ? (
+                <>Showing <span className="font-semibold text-gray-700 dark:text-gray-200">{total}</span> result{total !== 1 ? "s" : ""} for &ldquo;<span className="font-semibold text-gray-700 dark:text-gray-200">{searchQuery}</span>&rdquo;</>
+              ) : (
+                <><span className="font-semibold text-gray-700 dark:text-gray-200">{total}</span> public project{total !== 1 ? "s" : ""}</>
+              )}
+            </p>
+            {(searchQuery || selectedType) && (
+              <button
+                onClick={() => { setSearchQuery(""); setSelectedType(""); fetchResults("", "") }}
+                className="text-[11px] text-[#F26419] hover:text-[#d4550f] font-medium transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+
+        {loading && (
+          <div className="py-24 text-center">
+            <div className="h-7 w-7 border-2 border-[#1DA619] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-[13px] text-gray-400">Searching...</p>
+          </div>
+        )}
+
+        {!loading && results.length === 0 && (
+          <div className="py-24 text-center">
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-gray-100 dark:bg-[#222] flex items-center justify-center mb-4">
+              <Globe className="h-6 w-6 text-gray-300" />
+            </div>
+            <p className="text-[15px] font-semibold text-gray-500 mb-1">No public projects found</p>
+            <p className="text-[12px] text-gray-400 max-w-xs mx-auto">Try a different search term or check back later</p>
+          </div>
+        )}
+
+        {/* Card Grid */}
+        {!loading && results.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {results.map((project) => {
+              const config = typeConfig[project.type] || typeConfig["Preprints"]
+              return (
+                <button
+                  key={project._id}
+                  onClick={() => setSelectedProject(project)}
+                  className="group text-left bg-white dark:bg-[#161616] rounded-2xl border border-[#e8e4dc] dark:border-[#222] hover:border-[#1DA619]/25 hover:shadow-md transition-all duration-200 flex flex-col"
+                >
+                  {/* Card top */}
+                  <div className="px-5 pt-5 pb-3 flex-1">
+                    {/* Type icon + badge */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center border", config.bg, config.border)}>
+                        <span className={cn("text-[10px] font-bold", config.color)}>{config.icon}</span>
+                      </div>
+                      <span className={cn("text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border", config.bg, config.color, config.border)}>
+                        {project.type.split(" ")[0]}
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="text-[14px] font-bold text-gray-800 dark:text-gray-100 group-hover:text-[#1DA619] transition-colors mb-1 line-clamp-2 leading-snug">
+                      {project.title}
+                    </h3>
+
+                    {/* Description */}
+                    <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed mb-3">{project.description}</p>
+
+                    {/* Members */}
+                    {project.users.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex -space-x-1.5">
+                          {project.users.slice(0, 3).map((u) => (
+                            <div
+                              key={u.id}
+                              className="h-5 w-5 rounded-full bg-[#1DA619]/10 border-2 border-white dark:border-[#161616] flex items-center justify-center"
+                              title={u.name}
+                            >
+                              <span className="text-[7px] font-bold text-[#1DA619]">{u.name?.[0]?.toUpperCase()}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          {project.users.length} member{project.users.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card bottom */}
+                  <div className="px-5 py-3 border-t border-[#f0ece4] dark:border-[#222] flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <Clock className="h-2.5 w-2.5" />
+                      {getTimeAgo(project.updatedAt)}
+                    </span>
+                    <span className="text-[10px] font-medium text-[#1DA619] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      View details
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </main>
+
+      {/* Detail Modal */}
+      <Dialog open={!!selectedProject} onOpenChange={(open) => { if (!open) setSelectedProject(null) }}>
+        <DialogContent className="sm:max-w-lg !p-0 !gap-0" showCloseButton={true}>
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#1DA619] via-[#1DA619] to-[#F26419] rounded-t-2xl" />
+
+          {selectedProject && (
+            <>
+              <DialogHeader className="px-6 pt-5 pb-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={cn(
+                    "text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border",
+                    typeConfig[selectedProject.type]?.bg, typeConfig[selectedProject.type]?.color, typeConfig[selectedProject.type]?.border
+                  )}>
+                    {selectedProject.type}
+                  </span>
+                  <span className="flex items-center gap-1 text-[10px] text-[#1DA619] font-medium bg-[#1DA619]/8 px-2 py-0.5 rounded border border-[#1DA619]/15">
+                    <Globe className="h-2.5 w-2.5" />
+                    Public
+                  </span>
+                </div>
+                <DialogTitle className="text-[17px] leading-snug">{selectedProject.title}</DialogTitle>
+                {selectedProject.subtitle && (
+                  <DialogDescription className="!mt-1 text-[13px] text-gray-500">{selectedProject.subtitle}</DialogDescription>
+                )}
+              </DialogHeader>
+
+              <div className="px-6 pt-4 pb-2 space-y-4">
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Description</label>
+                  <div className="text-[13px] text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3.5 border border-gray-100 dark:border-[#2a2a2a] max-h-[200px] overflow-y-auto">
+                    {selectedProject.description}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="px-3.5 py-3 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-100 dark:border-[#2a2a2a]">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <CalendarDays className="h-3 w-3 text-gray-400" />
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Created</span>
+                    </div>
+                    <p className="text-[13px] font-medium text-gray-700 dark:text-gray-200">
+                      {formatDate(selectedProject.createdDate) || formatDate(selectedProject.updatedAt) || "Unknown"}
+                    </p>
+                  </div>
+                  <div className="px-3.5 py-3 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-100 dark:border-[#2a2a2a]">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Clock className="h-3 w-3 text-gray-400" />
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Updated</span>
+                    </div>
+                    <p className="text-[13px] font-medium text-gray-700 dark:text-gray-200">
+                      {getTimeAgo(selectedProject.updatedAt) || "Unknown"}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedProject.users.length > 0 && (
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">
+                      Collaborators ({selectedProject.users.length})
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedProject.users.map((u) => (
+                        <div key={u.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-100 dark:border-[#2a2a2a]">
+                          <div className="h-6 w-6 rounded-full bg-[#1DA619]/10 flex items-center justify-center">
+                            <span className="text-[9px] font-bold text-[#1DA619]">
+                              {u.name?.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                            </span>
+                          </div>
+                          <span className="text-[12px] font-medium text-gray-700 dark:text-gray-300">{u.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-100 dark:border-[#222] flex items-center justify-end">
+                <button onClick={() => setSelectedProject(null)} className="h-9 px-5 rounded-lg bg-[#1DA619] text-white text-[12px] font-medium hover:bg-[#158514] transition-all shadow-sm">
+                  Close
+                </button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
